@@ -1,0 +1,11 @@
+node_modules/
+.pnpm-store/
+dist/
+.wrangler/
+coverage/
+playwright-report/
+test-results/
+.env
+.dev.vars
+data/snapshots/*.json
+!data/snapshots/sample.json
