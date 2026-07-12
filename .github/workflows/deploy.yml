@@ -35,6 +35,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Опубликовать Worker-зеркало
-        run: pnpm deploy:worker
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            pnpm deploy:worker && exit 0
+            echo "::warning::Cloudflare Worker deploy failed (attempt $attempt/3)"
+            sleep $((attempt * 10))
+          done
+          exit 1
       - name: Опубликовать Cloudflare Pages
-        run: pnpm exec wrangler pages deploy dist --project-name bus-mogilev-minsk --branch main
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            pnpm exec wrangler pages deploy dist --project-name bus-mogilev-minsk --branch main && exit 0
+            echo "::warning::Cloudflare Pages deploy failed (attempt $attempt/3)"
+            sleep $((attempt * 10))
+          done
+          exit 1
