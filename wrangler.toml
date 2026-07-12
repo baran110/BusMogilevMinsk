@@ -2,7 +2,6 @@ name = "bus-mogilev-minsk"
 compatibility_date = "2026-07-12"
 pages_build_output_dir = "dist"
 
-# Для локального запуска Pages Functions добавьте ID пространства после создания KV:
-# [[kv_namespaces]]
-# binding = "TRIPS_KV"
-# id = "YOUR_KV_NAMESPACE_ID"
+[[kv_namespaces]]
+binding = "TRIPS_KV"
+id = "b9fbd39948c441308ef317ec81e0a5e5"
