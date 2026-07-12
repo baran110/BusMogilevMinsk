@@ -1,5 +1,5 @@
 export type Direction = 'mogilev-minsk' | 'minsk-mogilev'
-export type VehicleType = 'minibus' | 'bus' | 'unknown'
+export type VehicleType = 'minibus' | 'bus' | 'train' | 'unknown'
 export type AvailabilityStatus = 'available' | 'sold_out' | 'unknown'
 export type SourceKind = 'carrier' | 'platform'
 export type SourceStatus = 'ok' | 'stale' | 'error' | 'unchecked'
@@ -81,7 +81,7 @@ export interface SourceRegistryEntry {
   kind: SourceKind
   url: string
   bookingUrl: string
-  adapter: 'transporter-api' | 'atlas' | 'ticketbus' | 'grandexpress' | 'link-only'
+  adapter: 'transporter-api' | 'buspro' | 'atlas' | 'bzd-html' | 'availability' | 'link-only'
   enabled: boolean
   note?: string
 }

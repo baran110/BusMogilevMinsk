@@ -25,7 +25,8 @@ export function normalizeCarrier(value: string, fallback: string): string {
 
 export function vehicleTypeFromName(name = ''): VehicleType {
   const normalized = name.toLocaleLowerCase('ru')
-  if (/sprinter|crafter|jumper|ducato|transit|боксер|микроавтобус/.test(normalized)) return 'minibus'
+  if (/поезд|электричк|штадлер|ж\/д|железнодорож/.test(normalized)) return 'train'
+  if (/sprinter|crafter|jumper|ducato|transit|боксер|микроавтобус|м\s*\/\s*а/.test(normalized)) return 'minibus'
   if (/маз|yutong|голаз|автобус|neoplan|setra/.test(normalized)) return 'bus'
   return 'unknown'
 }

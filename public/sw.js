@@ -1,4 +1,4 @@
-const CACHE = 'mm-static-v1'
+const CACHE = 'mm-static-v2'
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {

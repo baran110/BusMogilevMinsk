@@ -4,6 +4,7 @@ import type { Direction, SourceHealth, Trip, TripsResponse, VehicleType } from '
 const schedules = [
   { time: '05:35', duration: 150, carrier: 'ИП Кононов В. В.', vehicle: 'Volkswagen Crafter', price: 30, seats: 4, source: 'АвтоСлава', sourceId: 'avtoslava', kind: 'carrier' as const, fromStop: 'Автовокзал', toStop: 'АС Автозаводская' },
   { time: '06:50', duration: 180, carrier: 'ООО ВитЭкспресс', vehicle: 'Mercedes-Benz Sprinter', price: 30, seats: 2, source: 'АвтоСлава', sourceId: 'avtoslava', kind: 'carrier' as const, fromStop: 'Автовокзал', toStop: 'Центральный автовокзал' },
+  { time: '06:59', duration: 163, carrier: 'Белорусская железная дорога', vehicle: 'Межрегиональный поезд бизнес-класса', price: 25.28, seats: 10, source: 'БЖД', sourceId: 'bzd', kind: 'carrier' as const, fromStop: 'Могилёв-1', toStop: 'Минск-Пассажирский' },
   { time: '07:30', duration: 175, carrier: 'ИП Афонасенко С. Г.', vehicle: 'Volkswagen Crafter', price: 25, seats: 1, source: 'Atlas', sourceId: 'atlas', kind: 'platform' as const, fromStop: 'ост. Симонова', toStop: 'Центральный автовокзал' },
   { time: '08:20', duration: 150, carrier: 'ЧП СтритТорг', vehicle: 'Mercedes-Benz Sprinter', price: 30, seats: 5, source: 'АвтоСлава', sourceId: 'avtoslava', kind: 'carrier' as const, fromStop: 'Автовокзал', toStop: 'АС Автозаводская' },
   { time: '09:45', duration: 170, carrier: 'Минск Экспресс', vehicle: 'Mercedes-Benz Sprinter', price: 20, seats: 3, source: 'Минск Экспресс', sourceId: 'minsk-express', kind: 'carrier' as const, fromStop: 'ост. Дворец гимнастики', toStop: 'Кирова, 8' },
@@ -22,9 +23,11 @@ const sourceHealth: SourceHealth[] = [
   { id: 'minsk-express', name: 'Минск Экспресс', kind: 'carrier', url: 'https://mogilevminsk.by/', status: 'ok', tripsFound: 10 },
   { id: 'grandexpress', name: 'ГрандЭкспресс', kind: 'carrier', url: 'https://grandexpress.by/', status: 'unchecked', message: 'Нет опубликованных рейсов на выбранную дату' },
   { id: 'ticketbus', name: 'TicketBus', kind: 'platform', url: 'https://ticketbus.by/', status: 'stale', message: 'Источник отвечает медленно' },
+  { id: 'bzd', name: 'БЖД', kind: 'carrier', url: 'https://pass.rw.by/ru/', status: 'ok', tripsFound: 3 },
 ]
 
 function typeFor(vehicle: string): VehicleType {
+  if (/поезд/i.test(vehicle)) return 'train'
   return /маз|yutong/i.test(vehicle) ? 'bus' : 'minibus'
 }
 
@@ -41,11 +44,13 @@ export function buildDemoTrips(direction: Direction, days = 30): Trip[] {
         ? 'https://mogilevminsk.by/'
         : item.sourceId === 'avtoslava'
           ? 'https://avto-slava.by/'
-          : item.sourceId === 'ticketbus'
-            ? 'https://ticketbus.by/'
-            : reverse
-              ? 'https://atlasbus.by/Маршруты/Минск/Могилёв'
-              : 'https://atlasbus.by/Маршруты/Могилёв/Минск'
+          : item.sourceId === 'bzd'
+            ? 'https://pass.rw.by/ru/'
+            : item.sourceId === 'ticketbus'
+              ? 'https://ticketbus.by/'
+              : reverse
+                ? 'https://atlasbus.by/Маршруты/Минск/Могилёв'
+                : 'https://atlasbus.by/Маршруты/Могилёв/Минск'
       return {
         id: `demo-${direction}-${date}-${index}`,
         direction,

@@ -1,9 +1,18 @@
 [
-  { "id": "atlas", "name": "Atlas", "kind": "platform", "url": "https://atlasbus.by/", "bookingUrl": "https://atlasbus.by/Маршруты/Могилёв/Минск", "adapter": "atlas", "enabled": true, "note": "Крупнейшая площадка партнёров маршрута" },
+  { "id": "atlas", "name": "Atlas", "kind": "platform", "url": "https://atlasbus.by/", "bookingUrl": "https://atlasbus.by/Маршруты/Могилёв/Минск", "adapter": "atlas", "enabled": true, "note": "Публичная выдача агрегатора; партнёр показывается только если он однозначно указан" },
   { "id": "avtoslava", "name": "АвтоСлава", "kind": "carrier", "url": "https://avto-slava.by/", "bookingUrl": "https://avto-slava.by/", "adapter": "transporter-api", "enabled": true },
   { "id": "minsk-express", "name": "Минск Экспресс", "kind": "carrier", "url": "https://mogilevminsk.by/", "bookingUrl": "https://mogilevminsk.by/", "adapter": "transporter-api", "enabled": true },
-  { "id": "grandexpress", "name": "ГрандЭкспресс", "kind": "carrier", "url": "https://grandexpress.by/", "bookingUrl": "https://grandexpress.by/", "adapter": "grandexpress", "enabled": true },
-  { "id": "ticketbus", "name": "TicketBus", "kind": "platform", "url": "https://ticketbus.by/", "bookingUrl": "https://ticketbus.by/", "adapter": "ticketbus", "enabled": true },
-  { "id": "7311", "name": "Новая линия / 7311", "kind": "carrier", "url": "https://7311.by/", "bookingUrl": "https://7311.by/", "adapter": "link-only", "enabled": false, "note": "Сайт недоступен при последней проверке" },
-  { "id": "mogilev-minsk", "name": "Две столицы", "kind": "carrier", "url": "https://mogilev-minsk.by/", "bookingUrl": "https://mogilev-minsk.by/", "adapter": "link-only", "enabled": false, "note": "Требуется повторная проверка актуальности" }
+  { "id": "grandexpress", "name": "ГрандЭкспресс", "kind": "carrier", "url": "https://grandexpress.by/", "bookingUrl": "https://grandexpress.by/#reservation-form-v2", "adapter": "buspro", "enabled": true, "note": "BusPro company 8" },
+  { "id": "grandexpress-vash", "name": "Ваш Экспресс", "kind": "carrier", "url": "https://vash-exspress.by/", "bookingUrl": "https://grandexpress.by/#reservation-form-v2", "adapter": "availability", "enabled": true, "note": "Зеркало ГрандЭкспресс; не создаёт дубли рейсов" },
+  { "id": "grandexpress-hutki", "name": "HutkiBus", "kind": "carrier", "url": "https://hutkibus.by/", "bookingUrl": "https://grandexpress.by/#reservation-form-v2", "adapter": "availability", "enabled": true, "note": "Зеркало ГрандЭкспресс; не создаёт дубли рейсов" },
+  { "id": "new-line", "name": "Новая Линия", "kind": "carrier", "url": "https://7777040.by/", "bookingUrl": "https://7777040.by/#reservation-form-v2", "adapter": "buspro", "enabled": true, "note": "BusPro company 51" },
+  { "id": "smilebus", "name": "Смайлбус", "kind": "carrier", "url": "https://smilebus.by/", "bookingUrl": "https://smilebus.by/", "adapter": "availability", "enabled": true, "note": "618.by перенаправляет на smilebus.by; в API нет маршрута Могилёв—Минск" },
+  { "id": "infobus", "name": "INFOBUS", "kind": "platform", "url": "https://infobus.by/", "bookingUrl": "https://infobus.by/bus/route/from-mogilev-to-minsk", "adapter": "availability", "enabled": true, "note": "Маршрутные страницы есть; открытый API не обнаружен" },
+  { "id": "ticketbus", "name": "TicketBus", "kind": "platform", "url": "https://ticketbus.by/", "bookingUrl": "https://ticketbus.by/", "adapter": "availability", "enabled": true, "note": "Официальная билетная система автовокзалов" },
+  { "id": "tutu", "name": "Tutu", "kind": "platform", "url": "https://by.tutu.travel/", "bookingUrl": "https://by.tutu.travel/", "adapter": "availability", "enabled": true },
+  { "id": "yandex-schedules", "name": "Яндекс Расписания", "kind": "platform", "url": "https://yandex.by/maps/", "bookingUrl": "https://yandex.by/maps/", "adapter": "availability", "enabled": true },
+  { "id": "visit-tour", "name": "Визит-Тур", "kind": "carrier", "url": "https://visit-tour.by/", "bookingUrl": "https://visit-tour.by/", "adapter": "availability", "enabled": true },
+  { "id": "intercars", "name": "Intercars Europe", "kind": "carrier", "url": "https://www.intercars-tickets.com/", "bookingUrl": "https://www.intercars-tickets.com/", "adapter": "availability", "enabled": true },
+  { "id": "ecolines", "name": "Ecolines", "kind": "carrier", "url": "https://ecolines.by/by/ru", "bookingUrl": "https://ecolines.by/by/ru/booking-search", "adapter": "availability", "enabled": true },
+  { "id": "bzd", "name": "БЖД", "kind": "carrier", "url": "https://pass.rw.by/ru/", "bookingUrl": "https://pass.rw.by/ru/", "adapter": "bzd-html", "enabled": true, "note": "Официальная страница поиска и покупки билетов" }
 ]

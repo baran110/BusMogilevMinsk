@@ -40,12 +40,13 @@ const initialFilters: Filters = {
   showSoldOut: false,
 }
 
-const Icon = ({ name, size = 20 }: { name: 'swap' | 'filter' | 'clock' | 'bus' | 'route' | 'arrow' | 'check' | 'close' | 'calendar' | 'source'; size?: number }) => {
+const Icon = ({ name, size = 20 }: { name: 'swap' | 'filter' | 'clock' | 'bus' | 'train' | 'route' | 'arrow' | 'check' | 'close' | 'calendar' | 'source'; size?: number }) => {
   const paths: Record<string, React.ReactNode> = {
     swap: <><path d="M7 7h11l-3-3"/><path d="m18 7-3 3"/><path d="M17 17H6l3 3"/><path d="m6 17 3-3"/></>,
     filter: <><path d="M4 5h16"/><path d="M7 12h10"/><path d="M10 19h4"/></>,
     clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
     bus: <><rect x="4" y="3" width="16" height="16" rx="3"/><path d="M7 8h10M8 19v2m8-2v2M8 15h.01M16 15h.01"/></>,
+    train: <><rect x="5" y="3" width="14" height="16" rx="4"/><path d="M8 8h8M8 14h.01M16 14h.01M8 21l2-2m6 2-2-2"/></>,
     route: <><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h3a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3"/></>,
     arrow: <><path d="M5 12h14"/><path d="m14 7 5 5-5 5"/></>,
     check: <path d="m5 12 4 4L19 6"/>,
@@ -116,7 +117,7 @@ function FilterPanel({ filters, setFilters, trips, mobile, close }: {
       <div className="filter-block">
         <label>Тип транспорта</label>
         <div className="segmented">
-          {([['all', 'Все'], ['minibus', 'Маршрутки'], ['bus', 'Автобусы']] as const).map(([value, label]) => (
+          {([['all', 'Все'], ['minibus', 'Маршрутки'], ['bus', 'Автобусы'], ['train', 'Поезда']] as const).map(([value, label]) => (
             <button key={value} className={filters.vehicle === value ? 'selected' : ''} onClick={() => update('vehicle', value)}>{label}</button>
           ))}
         </div>
@@ -149,11 +150,12 @@ function FilterPanel({ filters, setFilters, trips, mobile, close }: {
 function TripCard({ trip, cheapest }: { trip: Trip; cheapest: boolean }) {
   const best = chooseBestBooking(trip.bookingOptions)
   const soldOut = trip.availability === 'sold_out'
+  const vehicleLabel = trip.vehicleType === 'train' ? 'Поезд' : trip.vehicleType === 'bus' ? 'Автобус' : 'Маршрутка'
   return (
     <article className={`trip-card ${soldOut ? 'sold-out' : ''}`}>
       <div className="trip-card-top">
         <div className="carrier-mark">{trip.carrierName.split(/\s+/).filter((part) => !/^(ооо|ип|чп|оао|чтуп)$/i.test(part)).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</div>
-        <div className="carrier-info"><span>{trip.vehicleType === 'bus' ? 'Автобус' : 'Маршрутка'}</span><strong>{trip.carrierName}</strong></div>
+        <div className="carrier-info"><span>{vehicleLabel}</span><strong>{trip.carrierName}</strong></div>
         <div className="trip-badges">
           {cheapest && !soldOut && <span className="badge best">Лучшая цена</span>}
           <span className={`badge ${soldOut ? 'muted' : 'available'}`}>{soldOut ? 'Нет мест' : trip.seats ? `${trip.seats} ${trip.seats === 1 ? 'место' : trip.seats < 5 ? 'места' : 'мест'}` : 'Места есть'}</span>
@@ -167,11 +169,11 @@ function TripCard({ trip, cheapest }: { trip: Trip; cheapest: boolean }) {
         </div>
         <div className="price-box">
           <span>за 1 пассажира</span>
-          <strong>{trip.price.toFixed(trip.price % 1 ? 2 : 0)} <small>BYN</small></strong>
+          <strong>{trip.price > 0 ? <>{trip.price.toFixed(trip.price % 1 ? 2 : 0)} <small>BYN</small></> : 'Уточнить'}</strong>
         </div>
       </div>
       <div className="trip-card-bottom">
-        <div className="vehicle"><Icon name="bus" size={17} /><span>{trip.vehicleName || 'Транспорт перевозчика'}{trip.vehicleNumber ? ` · ${trip.vehicleNumber}` : ''}</span></div>
+        <div className="vehicle"><Icon name={trip.vehicleType === 'train' ? 'train' : 'bus'} size={17} /><span>{trip.vehicleName || 'Транспорт перевозчика'}{trip.vehicleType === 'train' && trip.routeNumber ? ` · № ${trip.routeNumber}` : ''}{trip.vehicleNumber ? ` · ${trip.vehicleNumber}` : ''}</span></div>
         <div className="source-label">Данные: <strong>{best.sourceName}</strong></div>
         <a className={`booking-button ${soldOut ? 'secondary' : ''}`} href={best.url} target="_blank" rel="noopener noreferrer">
           {soldOut ? 'Проверить на сайте' : 'Перейти к бронированию'} <Icon name="arrow" size={17} />
@@ -198,7 +200,7 @@ function SourcesPanel({ sources, close }: { sources: SourceHealth[]; close: () =
           {sources.map((source) => (
             <a href={source.url} target="_blank" rel="noopener noreferrer" className="source-item" key={source.id}>
               <div className="source-icon"><Icon name="source" /></div>
-              <div><strong>{source.name}</strong><span>{source.kind === 'carrier' ? 'Сайт перевозчика' : 'Площадка бронирования'}{source.message ? ` · ${source.message}` : ''}</span></div>
+              <div><strong>{source.name}</strong><span>{source.id === 'bzd' ? 'Официальный железнодорожный оператор' : source.kind === 'carrier' ? 'Сайт перевозчика' : 'Площадка бронирования'}{source.message ? ` · ${source.message}` : ''}</span></div>
               <span className={`source-status ${source.status}`}>{labels[source.status]}</span>
             </a>
           ))}
@@ -278,7 +280,7 @@ export default function App() {
           <div className="hero-copy">
             <span className="eyebrow light">Все перевозчики в одном месте</span>
             <h1>Из Могилёва<br />в Минск <em>выгодно</em></h1>
-            <p>Сравнивайте время, цены и свободные места. Бронируйте напрямую у перевозчика.</p>
+            <p>Сравнивайте маршрутки, автобусы и поезда. Бронируйте напрямую у оператора.</p>
           </div>
           <div className="road-art" aria-hidden="true">
             <div className="sun"></div><div className="city city-left"></div><div className="city city-right"></div>

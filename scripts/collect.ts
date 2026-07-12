@@ -7,6 +7,8 @@ import { readPrevious, publishSnapshots } from './lib/kv'
 import type { SourceResult } from './lib/source'
 import { checkSource } from './sources/availability'
 import { collectAtlas } from './sources/atlas'
+import { collectBusPro } from './sources/buspro'
+import { collectBzd } from './sources/bzd'
 import { collectTransporter } from './sources/transporter'
 
 const localOnly = process.argv.includes('--local')
@@ -15,8 +17,19 @@ const generatedAt = new Date().toISOString()
 const directResults = await Promise.all([
   collectTransporter({ id: 'avtoslava', name: 'АвтоСлава', baseUrl: 'https://avto-slava.by', bookingUrl: 'https://avto-slava.by/', kind: 'carrier' }),
   collectTransporter({ id: 'minsk-express', name: 'Минск Экспресс', baseUrl: 'https://mogilevminsk.by', bookingUrl: 'https://mogilevminsk.by/', kind: 'carrier' }),
-  checkSource('grandexpress', 'ГрандЭкспресс', 'carrier', 'https://grandexpress.by/'),
+  collectBusPro({ id: 'grandexpress', name: 'ГрандЭкспресс', companyId: 8, bookingUrl: 'https://grandexpress.by/' }),
+  collectBusPro({ id: 'new-line', name: 'Новая Линия', companyId: 51, bookingUrl: 'https://7777040.by/' }),
+  collectBzd(),
+  checkSource('smilebus', 'Смайлбус', 'carrier', 'https://smilebus.by/', 'Открытый API доступен, но маршрут Могилёв—Минск сейчас не опубликован'),
+  checkSource('grandexpress-vash', 'Ваш Экспресс', 'carrier', 'https://vash-exspress.by/', 'Зеркало ГрандЭкспресс; рейсы учтены через основной сайт'),
+  checkSource('grandexpress-hutki', 'HutkiBus', 'carrier', 'https://hutkibus.by/', 'Зеркало ГрандЭкспресс; рейсы учтены через основной сайт'),
+  checkSource('infobus', 'INFOBUS', 'platform', 'https://infobus.by/bus/route/from-mogilev-to-minsk', 'Маршрутная страница доступна; без открытого API рейсы не импортируются'),
   checkSource('ticketbus', 'TicketBus', 'platform', 'https://ticketbus.by/'),
+  checkSource('tutu', 'Tutu', 'platform', 'https://by.tutu.travel/', 'Проверка доступности; без открытого API'),
+  checkSource('yandex-schedules', 'Яндекс Расписания', 'platform', 'https://yandex.by/maps/', 'Проверка доступности; без API-ключа рейсы не импортируются'),
+  checkSource('visit-tour', 'Визит-Тур', 'carrier', 'https://visit-tour.by/'),
+  checkSource('intercars', 'Intercars Europe', 'carrier', 'https://www.intercars-tickets.com/'),
+  checkSource('ecolines', 'Ecolines', 'carrier', 'https://ecolines.by/by/ru'),
 ])
 
 let atlasResult: SourceResult

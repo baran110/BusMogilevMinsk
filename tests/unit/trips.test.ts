@@ -7,6 +7,7 @@ describe('trip normalization', () => {
     expect(normalizeCarrier('MERCEDES SPRINTER 5350 ООО ВИТЭКСПРЕСС', 'АвтоСлава')).toBe('ООО Витэкспресс')
     expect(vehicleTypeFromName('Mercedes-Benz Sprinter')).toBe('minibus')
     expect(vehicleTypeFromName('МАЗ 251062')).toBe('bus')
+    expect(vehicleTypeFromName('Межрегиональный поезд')).toBe('train')
   })
 
   it('prefers a direct available booking channel', () => {

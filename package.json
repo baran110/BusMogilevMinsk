@@ -13,7 +13,8 @@
     "test:run": "vitest run",
     "test:e2e": "playwright test",
     "collect": "tsx scripts/collect.ts",
-    "collect:sample": "tsx scripts/collect.ts --local"
+    "collect:sample": "tsx scripts/collect.ts --local",
+    "deploy:worker": "wrangler deploy --config wrangler.worker.toml"
   },
   "dependencies": {
     "react": "^19.1.0",

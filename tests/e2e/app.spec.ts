@@ -22,12 +22,16 @@ test('filters and shows source transparency', async ({ page, isMobile }) => {
   if (isMobile) {
     await page.getByRole('button', { name: 'Фильтры' }).click()
     await expect(page.locator('.mobile-sheet')).toBeVisible()
+    await page.locator('.mobile-sheet').getByRole('button', { name: 'Поезда' }).click()
     await page.getByRole('button', { name: 'Показать рейсы' }).click()
   } else {
     await expect(page.locator('.results-layout > .filters')).toBeVisible()
+    await page.locator('.results-layout > .filters').getByRole('button', { name: 'Поезда' }).click()
   }
+  await expect(page.locator('.trip-card')).toHaveCount(1)
+  await expect(page.locator('.trip-card')).toContainText('Белорусская железная дорога')
   if (isMobile) await page.getByRole('button', { name: 'Все источники →' }).click()
   else await page.getByRole('button', { name: 'Источники', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Источники данных' })).toBeVisible()
-  await expect(page.locator('.source-item')).toHaveCount(5)
+  await expect(page.locator('.source-item')).toHaveCount(6)
 })
