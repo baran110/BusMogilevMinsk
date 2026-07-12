@@ -1,0 +1,18 @@
+{
+  "name": "Маршрутки Могилёв — Минск",
+  "short_name": "ММ маршрутки",
+  "description": "Сравнение рейсов, цен и перевозчиков между Могилёвом и Минском",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2efe7",
+  "theme_color": "#163c32",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { localDate } from '../src/lib/date'
+import { isSnapshotExpired, mergeExactTrips } from '../src/lib/trips'
+import type { Direction, DirectionSnapshot, SnapshotManifest, SourceHealth, Trip } from '../src/types'
+import { readPrevious, publishSnapshots } from './lib/kv'
+import type { SourceResult } from './lib/source'
+import { checkSource } from './sources/availability'
+import { collectAtlas } from './sources/atlas'
+import { collectTransporter } from './sources/transporter'
+
+const localOnly = process.argv.includes('--local')
+const generatedAt = new Date().toISOString()
+
+const directResults = await Promise.all([
+  collectTransporter({ id: 'avtoslava', name: 'АвтоСлава', baseUrl: 'https://avto-slava.by', bookingUrl: 'https://avto-slava.by/', kind: 'carrier' }),
+  collectTransporter({ id: 'minsk-express', name: 'Минск Экспресс', baseUrl: 'https://mogilevminsk.by', bookingUrl: 'https://mogilevminsk.by/', kind: 'carrier' }),
+  checkSource('grandexpress', 'ГрандЭкспресс', 'carrier', 'https://grandexpress.by/'),
+  checkSource('ticketbus', 'TicketBus', 'platform', 'https://ticketbus.by/'),
+])
+
+let atlasResult: SourceResult
+if (process.env.SKIP_BROWSER_SOURCES === '1') {
+  atlasResult = { trips: [], health: { id: 'atlas', name: 'Atlas', kind: 'platform', url: 'https://atlasbus.by/', status: 'unchecked', checkedAt: generatedAt, message: 'Браузерный источник пропущен настройкой' } }
+} else {
+  atlasResult = await collectAtlas()
+}
+
+const results = [...directResults, atlasResult]
+const previous = localOnly ? { snapshots: {} as Partial<Record<Direction, DirectionSnapshot>> } : await readPrevious()
+const failedIds = new Set(results.filter((result) => result.health.status === 'error').map((result) => result.health.id))
+const currentTrips = results.flatMap((result) => result.trips)
+
+for (const direction of ['mogilev-minsk', 'minsk-mogilev'] as const) {
+  const snapshot = previous.snapshots[direction]
+  if (!snapshot || isSnapshotExpired(snapshot.generatedAt)) continue
+  for (const trip of snapshot.trips) {
+    if (trip.serviceDate < localDate()) continue
+    const failedOptions = trip.bookingOptions.filter((option) => failedIds.has(option.sourceId))
+    if (!failedOptions.length) continue
+    currentTrips.push({ ...trip, bookingOptions: failedOptions })
+  }
+}
+
+const health: SourceHealth[] = results.map((result) => {
+  if (result.health.status !== 'error') return result.health
+  const hadPrevious = Object.values(previous.snapshots).some((snapshot) => snapshot?.trips.some((trip) => trip.bookingOptions.some((option) => option.sourceId === result.health.id)))
+  return hadPrevious ? { ...result.health, status: 'stale', message: `Показаны последние данные: ${result.health.message || 'источник недоступен'}` } : result.health
+})
+
+const version = generatedAt.replace(/[-:.TZ]/g, '').slice(0, 14)
+const snapshots = (['mogilev-minsk', 'minsk-mogilev'] as const).map((direction): DirectionSnapshot => ({
+  schemaVersion: 1,
+  direction,
+  generatedAt,
+  trips: mergeExactTrips(currentTrips.filter((trip): trip is Trip => trip.direction === direction)),
+  sources: health,
+}))
+const manifest: SnapshotManifest = {
+  schemaVersion: 1,
+  version,
+  generatedAt,
+  directions: {
+    'mogilev-minsk': `snapshot:${version}:mogilev-minsk`,
+    'minsk-mogilev': `snapshot:${version}:minsk-mogilev`,
+  },
+  sources: health,
+}
+
+if (localOnly) {
+  const target = resolve('data/snapshots')
+  await mkdir(target, { recursive: true })
+  await writeFile(resolve(target, 'sample.json'), JSON.stringify({ manifest, snapshots }, null, 2), 'utf8')
+  console.log(`Saved ${snapshots.reduce((sum, snapshot) => sum + snapshot.trips.length, 0)} trips to data/snapshots/sample.json`)
+} else {
+  await publishSnapshots(manifest, snapshots)
+  console.log(`Published version ${version}: ${snapshots.map((snapshot) => `${snapshot.direction}=${snapshot.trips.length}`).join(', ')}`)
+}
