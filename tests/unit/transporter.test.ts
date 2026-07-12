@@ -37,4 +37,49 @@ describe('transporter API adapter', () => {
     expect(result.trips).toHaveLength(1)
     expect(result.trips[0]).toMatchObject({ carrierName: 'ООО Витэкспресс', durationMinutes: 180, price: 25, seats: 3 })
   })
+
+  it('supports provider-specific city ids and trips without duplicated city fields', async () => {
+    const routes = {
+      data: {
+        routes: [{
+          route_id: 26,
+          departure_city_id: 15,
+          arrival_city_id: 18,
+          stations_all__ordered: [
+            { id: 144, station_id: 144, station__title: 'Могилев - Автовокзал', city_id: 15, city__title: 'Могилёв', timedelta: '00:00:00', sequence: 1 },
+            { id: 143, station_id: 143, station__title: 'Минск - Автовокзал Центральный', city_id: 18, city__title: 'Минск', timedelta: '03:00:00', sequence: 2 },
+          ],
+        }],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/timetable/routes/')) return new Response(JSON.stringify(routes), { status: 200 })
+      const form = init?.body as FormData
+      const forward = form.get('from_city') === '15' && form.get('dest_city') === '18'
+      const date = String(form.get('date'))
+      const raw = forward ? {
+        id: '64451', route_id: 26, route: 'Могилев - Минск', transport: 'MERCEDES SPRINTER 8666', price: '25.00',
+        datetime: `${date}T06:25:00`, departure_time: '06:25', free_seats: 15, seats: 15,
+      } : undefined
+      return new Response(JSON.stringify({ data: { trips: raw ? { one: raw } : {} } }), { status: 200 })
+    }))
+
+    const result = await collectTransporter({
+      id: 'vitexpress',
+      name: 'ВитЭкспресс',
+      baseUrl: 'https://vitexpress.driveprof.com',
+      bookingUrl: 'https://vitexpress.by/online-bron',
+      kind: 'carrier',
+      cityIds: { mogilev: 15, minsk: 18 },
+    }, 2)
+
+    expect(result.trips).toHaveLength(1)
+    expect(result.trips[0]).toMatchObject({
+      direction: 'mogilev-minsk',
+      originStop: 'Могилев - Автовокзал',
+      destinationStop: 'Минск - Автовокзал Центральный',
+      carrierName: 'ВитЭкспресс',
+      seats: 15,
+    })
+  })
 })

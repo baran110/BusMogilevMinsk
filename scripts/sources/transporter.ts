@@ -10,6 +10,7 @@ interface TransporterConfig {
   baseUrl: string
   bookingUrl: string
   kind: SourceKind
+  cityIds?: { mogilev: number; minsk: number }
 }
 
 interface RawStation {
@@ -40,12 +41,12 @@ interface RawTrip {
   departure_time: string
   free_seats: number
   seats: number
-  from_station_id: number
-  to_station_id: number
-  from_route_station_id: number
-  to_route_station_id: number
-  from_city_id: number
-  to_city_id: number
+  from_station_id?: number
+  to_station_id?: number
+  from_route_station_id?: number
+  to_route_station_id?: number
+  from_city_id?: number
+  to_city_id?: number
 }
 
 function seconds(value = '00:00:00'): number {
@@ -68,8 +69,10 @@ function vehicleNumber(value: string): string | undefined {
 
 function normalizeRawTrip(raw: RawTrip, routes: RawRoute[], direction: Direction, config: TransporterConfig, seenAt: string): Trip {
   const route = routes.find((candidate) => candidate.route_id === raw.route_id)
-  const origin = findStation(route, [raw.from_station_id, raw.from_route_station_id], raw.from_city_id, true)
-  const destination = findStation(route, [raw.to_station_id, raw.to_route_station_id], raw.to_city_id, false)
+  const fromCityId = raw.from_city_id ?? route?.departure_city_id ?? config.cityIds?.[direction === 'mogilev-minsk' ? 'mogilev' : 'minsk'] ?? 0
+  const toCityId = raw.to_city_id ?? route?.arrival_city_id ?? config.cityIds?.[direction === 'mogilev-minsk' ? 'minsk' : 'mogilev'] ?? 0
+  const origin = findStation(route, [raw.from_station_id, raw.from_route_station_id].filter((value): value is number => value !== undefined), fromCityId, true)
+  const destination = findStation(route, [raw.to_station_id, raw.to_route_station_id].filter((value): value is number => value !== undefined), toCityId, false)
   let durationMinutes = origin && destination ? Math.round((seconds(destination.timedelta) - seconds(origin.timedelta)) / 60) : 0
   if (durationMinutes <= 0) durationMinutes += durationMinutes < -60 ? 24 * 60 : 180
   if (durationMinutes < 120 || durationMinutes > 300) durationMinutes = 180
@@ -80,7 +83,7 @@ function normalizeRawTrip(raw: RawTrip, routes: RawRoute[], direction: Direction
   const carrierName = normalizeCarrier(raw.transport, config.name)
   const price = Number.parseFloat(raw.price) || 0
   return {
-    id: `${config.id}:${raw.id}:${raw.from_city_id}:${raw.to_city_id}`,
+    id: `${config.id}:${raw.id}:${fromCityId}:${toCityId}`,
     direction,
     serviceDate: date,
     departureAt,
@@ -119,10 +122,11 @@ export async function collectTransporter(config: TransporterConfig, horizonDays 
     const routePayload = await routeResponse.json() as { data?: { routes?: RawRoute[] } }
     const routes = routePayload.data?.routes || []
     const today = localDate()
+    const cityIds = config.cityIds || { mogilev: 2, minsk: 1 }
     const requestedDates = Array.from({ length: Math.ceil(horizonDays / 3) }, (_, index) => addDays(today, index * 3 + 1))
     const all = new Map<string, Trip>()
     for (const date of requestedDates) {
-      for (const [direction, from, to] of [['mogilev-minsk', 2, 1], ['minsk-mogilev', 1, 2]] as const) {
+      for (const [direction, from, to] of [['mogilev-minsk', cityIds.mogilev, cityIds.minsk], ['minsk-mogilev', cityIds.minsk, cityIds.mogilev]] as const) {
         const body = new FormData()
         body.set('date', date)
         body.set('from_city', String(from))
