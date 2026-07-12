@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchTrips } from './lib/api'
+import { ACCESS_STORAGE_KEY, hashAccessKey, isAccessHash } from './lib/access'
 import {
   addDays,
   dateRange,
@@ -211,7 +212,43 @@ function SourcesPanel({ sources, close }: { sources: SourceHealth[]; close: () =
   )
 }
 
-export default function App() {
+function AccessGate({ onGranted }: { onGranted: (hash: string) => void }) {
+  const [key, setKey] = useState('')
+  const [error, setError] = useState('')
+  const [checking, setChecking] = useState(false)
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setChecking(true)
+    const hash = await hashAccessKey(key)
+    if (isAccessHash(hash)) {
+      try { localStorage.setItem(ACCESS_STORAGE_KEY, hash) } catch { /* Storage can be disabled. */ }
+      onGranted(hash)
+      return
+    }
+    setError('Неверный ключ доступа. Проверьте символы и попробуйте ещё раз.')
+    setChecking(false)
+  }
+
+  return (
+    <main className="access-screen">
+      <section className="access-card" aria-labelledby="access-title">
+        <div className="access-brand"><span className="brand-icon"><Icon name="bus" size={28} /></span><span><strong>ММ</strong><small>маршрутки</small></span></div>
+        <span className="eyebrow">Закрытый доступ</span>
+        <h1 id="access-title">Вход на сайт</h1>
+        <p>Введите один из выданных ключей. После успешного входа ключ сохранится в этом браузере.</p>
+        <form onSubmit={submit}>
+          <label htmlFor="access-key">Ключ доступа</label>
+          <input id="access-key" name="access-key" autoComplete="current-password" autoCapitalize="characters" spellCheck={false} value={key} onChange={(event) => { setKey(event.target.value); setError('') }} placeholder="MM-XXXXX-XXXXX-XXXXX-XXXXX" required autoFocus />
+          {error && <div className="access-error" role="alert">{error}</div>}
+          <button className="primary" type="submit" disabled={checking}>{checking ? 'Проверяем…' : 'Войти'}</button>
+        </form>
+      </section>
+    </main>
+  )
+}
+
+function TripsApp({ onLogout }: { onLogout: () => void }) {
   const [direction, setDirection] = useState<Direction>('mogilev-minsk')
   const [selectedDate, setSelectedDate] = useState(localDate())
   const [filters, setFilters] = useState(initialFilters)
@@ -222,6 +259,7 @@ export default function App() {
   const [mobileFilters, setMobileFilters] = useState(false)
   const [showSources, setShowSources] = useState(false)
   const [clock, setClock] = useState(new Date())
+  const [refreshTick, setRefreshTick] = useState(0)
   const cities = directionCities[direction]
 
   useEffect(() => {
@@ -233,10 +271,15 @@ export default function App() {
       setLoading(false)
     }).catch(() => setLoading(false))
     return () => controller.abort()
-  }, [direction, selectedDate])
+  }, [direction, selectedDate, refreshTick])
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRefreshTick((value) => value + 1), 3 * 60 * 60 * 1000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -272,7 +315,7 @@ export default function App() {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="На главную"><span className="brand-icon"><Icon name="bus" size={25} /></span><span><strong>ММ</strong><small>маршрутки</small></span></a>
         <nav><a href="#trips">Рейсы</a><button onClick={() => setShowSources(true)}>Источники</button><a href="#about">О сервисе</a></nav>
-        <div className="header-note"><span></span> Данные обновляются каждый час</div>
+        <div className="header-actions"><div className="header-note"><span></span> Обновление каждые 3 часа</div><button className="logout-button" onClick={onLogout}>Выйти</button></div>
       </header>
 
       <main id="top">
@@ -299,10 +342,10 @@ export default function App() {
 
         <section className="results-section" id="trips">
           <div className="content-width">
-            {demo && <div className="demo-banner"><strong>Демонстрационный режим.</strong> Подключите Workers KV, чтобы показывать ежечасно собранные данные.</div>}
+            {demo && <div className="demo-banner"><strong>Демонстрационный режим.</strong> Подключите Workers KV, чтобы показывать данные, собранные каждые 3 часа.</div>}
             {response?.stale && <div className="stale-banner">Обновление источников задерживается. Показан последний успешный снимок.</div>}
             <div className="results-heading">
-              <div><span className="eyebrow">{cities.from} → {cities.to}</span><h2>{loading ? 'Ищем рейсы…' : `${visibleTrips.length} ${visibleTrips.length % 10 === 1 && visibleTrips.length !== 11 ? 'рейс' : visibleTrips.length % 10 > 1 && visibleTrips.length % 10 < 5 ? 'рейса' : 'рейсов'}`}</h2><p>{response ? `Обновлено ${formatUpdated(response.generatedAt)}` : 'Получаем данные перевозчиков'}</p></div>
+              <div><span className="eyebrow">{cities.from} → {cities.to}</span><h2>{loading ? 'Ищем рейсы…' : `${visibleTrips.length} ${visibleTrips.length % 10 === 1 && visibleTrips.length !== 11 ? 'рейс' : visibleTrips.length % 10 > 1 && visibleTrips.length % 10 < 5 ? 'рейса' : 'рейсов'}`}</h2><p>{response ? `Последнее обновление: ${formatUpdated(response.generatedAt)} (Минск)` : 'Получаем данные перевозчиков'}</p></div>
               <div className="results-actions">
                 <button className="mobile-filter-button" onClick={() => setMobileFilters(true)}><Icon name="filter" /> Фильтры</button>
                 <label>Сначала <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="time">ранние</option><option value="price">дешёвые</option><option value="duration">быстрые</option></select></label>
@@ -322,7 +365,7 @@ export default function App() {
         <section className="trust-section" id="about">
           <div className="content-width trust-grid">
             <div><span className="eyebrow light">Как это работает</span><h2>Мы сравниваем.<br />Вы выбираете.</h2></div>
-            <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Проверяем прямые сайты и официальные площадки каждый час.</p></div>
+            <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Проверяем прямые сайты и официальные площадки каждые 3 часа.</p></div>
             <div className="trust-item"><span>02</span><strong>Убираем повторы</strong><p>Один физический рейс — одна карточка, даже если он продаётся в нескольких местах.</p></div>
             <div className="trust-item"><span>03</span><strong>Ведём к перевозчику</strong><p>Не принимаем оплату — вы завершаете бронирование на официальном сайте.</p></div>
           </div>
@@ -335,4 +378,17 @@ export default function App() {
       {showSources && <SourcesPanel sources={response?.sources || []} close={() => setShowSources(false)} />}
     </div>
   )
+}
+
+export default function App() {
+  const [accessGranted, setAccessGranted] = useState(() => {
+    try { return isAccessHash(localStorage.getItem(ACCESS_STORAGE_KEY)) } catch { return false }
+  })
+
+  const logout = () => {
+    try { localStorage.removeItem(ACCESS_STORAGE_KEY) } catch { /* Storage can be disabled. */ }
+    setAccessGranted(false)
+  }
+
+  return accessGranted ? <TripsApp onLogout={logout} /> : <AccessGate onGranted={() => setAccessGranted(true)} />
 }

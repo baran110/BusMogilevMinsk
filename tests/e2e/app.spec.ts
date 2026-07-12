@@ -1,10 +1,19 @@
 import { expect, test } from '@playwright/test'
+import { ACCESS_HASHES, ACCESS_STORAGE_KEY } from '../../src/lib/access'
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(({ key, hash }) => localStorage.setItem(key, hash), { key: ACCESS_STORAGE_KEY, hash: ACCESS_HASHES[0] })
   await page.goto('/')
   const tomorrow = page.locator('.date-chip').filter({ hasText: 'завтра' })
   await tomorrow.click()
   await expect(page.locator('.trip-card').first()).toBeVisible()
+})
+
+test('shows the saved access grant and allows logout', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'Выйти' })).toBeVisible()
+  await page.getByRole('button', { name: 'Выйти' }).click()
+  await expect(page.getByRole('heading', { name: 'Вход на сайт' })).toBeVisible()
+  await expect(page.evaluate((key) => localStorage.getItem(key), ACCESS_STORAGE_KEY)).resolves.toBeNull()
 })
 
 test('changes direction, sorts and opens a booking link', async ({ page }) => {

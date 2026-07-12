@@ -30,6 +30,23 @@ a { color: inherit; text-decoration: none; }
 .app-shell { min-height: 100vh; overflow: hidden; }
 .content-width { width: min(1180px, calc(100% - 48px)); margin-inline: auto; }
 
+.access-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--green); background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 48px 48px; }
+.access-card { width: min(440px, 100%); padding: 40px; background: var(--white); border-radius: 10px; box-shadow: 0 30px 90px rgba(0,0,0,.32); }
+.access-brand { display: inline-flex; align-items: center; gap: 11px; margin-bottom: 36px; color: var(--green); }
+.access-brand .brand-icon { background: var(--green); }
+.access-brand > span:last-child { display: grid; line-height: 1; }
+.access-brand strong { font-family: 'Unbounded', sans-serif; font-size: 20px; }
+.access-brand small { margin-top: 5px; font-size: 9px; text-transform: uppercase; letter-spacing: .18em; color: var(--muted); }
+.access-card h1 { margin: 0; font-family: 'Unbounded', sans-serif; font-size: 30px; letter-spacing: -.04em; }
+.access-card > p { margin: 15px 0 25px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.access-card form { display: grid; gap: 11px; }
+.access-card label { font-size: 11px; font-weight: 800; }
+.access-card input { width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 13px; letter-spacing: .06em; outline: none; text-transform: uppercase; }
+.access-card input:focus { border-color: var(--green-2); box-shadow: 0 0 0 3px rgba(36,91,75,.12); }
+.access-card .primary { margin-top: 6px; }
+.access-card .primary:disabled { opacity: .65; cursor: wait; }
+.access-error { color: #9a4035; font-size: 11px; line-height: 1.45; }
+
 .site-header {
   height: 78px; padding: 0 max(28px, calc((100vw - 1180px) / 2)); display: flex; align-items: center;
   justify-content: space-between; background: var(--green); color: white; border-bottom: 1px solid rgba(255,255,255,.12);
@@ -44,6 +61,9 @@ a { color: inherit; text-decoration: none; }
 .site-header nav a:hover, .site-header nav button:hover { color: var(--yellow); }
 .header-note { font-size: 11px; letter-spacing: .02em; color: rgba(255,255,255,.62); display: flex; align-items: center; gap: 9px; }
 .header-note span { width: 7px; height: 7px; border-radius: 50%; background: #82ca91; box-shadow: 0 0 0 4px rgba(130,202,145,.12); }
+.header-actions { display: flex; align-items: center; gap: 16px; }
+.logout-button { padding: 8px 11px; border: 1px solid rgba(255,255,255,.24); border-radius: 4px; background: transparent; color: rgba(255,255,255,.78); font-size: 10px; cursor: pointer; }
+.logout-button:hover { border-color: var(--yellow); color: var(--yellow); }
 
 .hero { position: relative; min-height: 506px; padding: 73px max(28px, calc((100vw - 1180px) / 2)) 116px; background: var(--green); color: white; }
 .hero::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(to right, black, transparent 72%); }
@@ -135,6 +155,7 @@ footer { padding: 30px 0; background: #0f2d25; color: rgba(255,255,255,.6); }.fo
 @media (max-width: 780px) {
   .content-width { width: min(100% - 28px, 620px); }
   .site-header { height: 66px; padding: 0 16px; }.site-header nav,.header-note{display:none}.brand-icon{width:37px;height:37px}
+  .header-actions { margin-left: auto; }.logout-button{padding:7px 10px}
   .hero { min-height: 520px; padding: 55px 18px 150px; }.hero-copy{max-width:520px;margin:auto}.hero h1{font-size:clamp(38px,12vw,55px)}.hero-copy p{font-size:13px}.road-art{top:185px;right:-150px;transform:scale(.7)}
   .search-card { bottom: -102px; width: calc(100% - 28px); grid-template-columns: 1fr 44px 1fr; gap: 0; padding: 14px; }.route-input{padding:10px 12px}.route-input:first-child{padding-left:7px}.route-input span{font-size:8px}.route-input strong{font-size:15px}.swap-button{width:36px;height:36px;margin-left:-18px}.date-input{grid-column:1/3;border-right:0;border-top:1px solid var(--line);padding:14px 7px 6px;margin-top:6px}.search-action{grid-column:3;grid-row:2;min-height:51px;margin-top:7px;font-size:0}.search-action svg{width:22px;height:22px}
   .date-section { padding-top: 137px; }.date-strip{margin-right:-14px}.date-chip{flex-basis:82px}
@@ -147,6 +168,7 @@ footer { padding: 30px 0; background: #0f2d25; color: rgba(255,255,255,.6); }.fo
 }
 
 @media (max-width: 430px) {
+  .access-screen { padding: 14px; }.access-card{padding:30px 22px}.access-card h1{font-size:26px}.access-brand{margin-bottom:30px}
   .hero h1 { font-size: 39px; }.hero-copy p{width:310px}.road-art{right:-208px}
   .results-heading .eyebrow{max-width:170px}.results-heading p{font-size:9px}.results-actions{gap:6px}.results-actions select{max-width:105px;padding-right:20px}.mobile-filter-button{font-size:0;padding:0;width:42px;justify-content:center}
   .trip-card-top{padding-inline:12px}.carrier-info strong{max-width:160px}.trip-badges{position:absolute;right:26px;margin-top:75px}.badge{font-size:7px}
