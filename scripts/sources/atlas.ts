@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test'
-import { addDays, addMinutes, localDate, minskIso } from '../../src/lib/date'
+import { addMinutes, localDate, minskIso } from '../../src/lib/date'
 import { slugify, vehicleTypeFromName } from '../../src/lib/trips'
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
 import { errorResult, type SourceResult } from '../lib/source'
@@ -9,13 +9,41 @@ const urls: Record<Direction, string> = {
   'minsk-mogilev': 'https://atlasbus.by/Маршруты/Минск/Могилёв',
 }
 
-function parseCard(text: string, direction: Direction, date: string, index: number, seenAt: string): Trip | undefined {
+const monthNumbers: Record<string, number> = {
+  янв: 1,
+  фев: 2,
+  мар: 3,
+  апр: 4,
+  мая: 5,
+  июн: 6,
+  июл: 7,
+  авг: 8,
+  сен: 9,
+  окт: 10,
+  ноя: 11,
+  дек: 12,
+}
+
+export function dateFromCalendarLabel(label: string, referenceDate = localDate()): string | undefined {
+  const match = label.toLowerCase().match(/(\d{1,2})\s+(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)/)
+  if (!match) return undefined
+  const [, yearText, monthText, dayText] = referenceDate.match(/^(\d{4})-(\d{2})-(\d{2})$/) || []
+  if (!yearText) return undefined
+  const month = monthNumbers[match[2]]
+  const day = Number(match[1])
+  const referenceMonth = Number(monthText)
+  const referenceDay = Number(dayText)
+  const year = Number(yearText) + (month < referenceMonth || (month === referenceMonth && day < referenceDay) ? 1 : 0)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+export function parseCard(text: string, direction: Direction, date: string, index: number, seenAt: string): Trip | undefined {
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
   const times = lines.filter((line) => /^\d{2}:\d{2}$/.test(line)).slice(0, 2)
   if (times.length < 2) return undefined
   const firstTime = lines.indexOf(times[0])
   const secondTime = lines.indexOf(times[1], firstTime + 1)
-  const originStop = lines[firstTime + 2] || (direction === 'mogilev-minsk' ? 'Могилёв' : 'Минск')
+  const originStop = lines[firstTime + 3] || (direction === 'mogilev-minsk' ? 'Могилёв' : 'Минск')
   const destinationStop = lines[secondTime + 2] || (direction === 'mogilev-minsk' ? 'Минск' : 'Могилёв')
   const durationMatch = text.match(/В пути:\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
   const durationMinutes = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : 180
@@ -24,6 +52,8 @@ function parseCard(text: string, direction: Direction, date: string, index: numb
   if (!price) return undefined
   const soldOut = /нет мест/i.test(text)
   const availability: AvailabilityStatus = soldOut ? 'sold_out' : 'available'
+  const seatsMatch = text.match(/свободно\s+(\d+)\+?\s+мест/i)
+  const seats = soldOut ? 0 : /последнее место/i.test(text) ? 1 : seatsMatch ? Number(seatsMatch[1]) : undefined
   const vehicleName = lines.find((line) => /sprinter|crafter|maz|маз|yutong|голаз|mercedes|volkswagen/i.test(line))
   const departureAt = minskIso(date, times[0])
   const carrierName = 'Перевозчик Atlas'
@@ -43,7 +73,8 @@ function parseCard(text: string, direction: Direction, date: string, index: numb
     price,
     currency: 'BYN',
     availability,
-    bookingOptions: [{ sourceId: 'atlas', sourceName: 'Atlas', sourceKind: 'platform', url: urls[direction], price, currency: 'BYN', availability }],
+    seats,
+    bookingOptions: [{ sourceId: 'atlas', sourceName: 'Atlas', sourceKind: 'platform', url: `${urls[direction]}?date=${date}&passengers=1`, price, currency: 'BYN', availability, seats }],
     lastSeenAt: seenAt,
   }
 }
@@ -60,30 +91,46 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
       await page.waitForSelector('button', { timeout: 20_000 })
       const rejectCookies = page.getByRole('button', { name: 'Отклонить все' })
       if (await rejectCookies.count() === 1 && await rejectCookies.isVisible()) await rejectCookies.click()
+      const searchButton = page.locator('[data-testid="search-button"]')
+      await searchButton.waitFor({ state: 'visible', timeout: 20_000 })
+      await searchButton.click()
+      await page.waitForSelector('[data-testid="price-calendar-item-button"]', { timeout: 20_000 })
+      await page.waitForTimeout(1_000)
+      if (await rejectCookies.count() === 1 && await rejectCookies.isVisible()) await rejectCookies.click()
       const dateButtons = page.locator('[data-testid="price-calendar-item-button"]')
       const dateCount = Math.min(await dateButtons.count(), horizonDays)
+      let datesWithTrips = 0
+      if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction}: ${dateCount} calendar dates, ${page.url()}`)
       for (let day = 0; day < dateCount; day += 1) {
-        if (day > 0) {
-          const button = dateButtons.nth(day)
-          if (await button.isEnabled()) {
-            await button.click()
-            await page.waitForTimeout(450)
-          }
+        const button = dateButtons.nth(day)
+        const label = await button.innerText()
+        const serviceDate = dateFromCalendarLabel(label)
+        if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction}: ${JSON.stringify(label)} -> ${serviceDate || 'unknown'}`)
+        if (!serviceDate || label.includes('Нет рейсов') || !await button.isEnabled()) continue
+        datesWithTrips += 1
+        if (!page.url().includes(`date=${serviceDate}`)) {
+          await button.click()
+          await page.waitForURL((url) => url.searchParams.get('date') === serviceDate, { timeout: 15_000 })
+          await page.waitForTimeout(500)
         }
         const detailButtons = page.locator('button').filter({ hasText: 'Показать детали' })
-        if (await detailButtons.count() > 0) await detailButtons.first().waitFor({ state: 'visible', timeout: 15_000 })
+        await detailButtons.first().waitFor({ state: 'visible', timeout: 15_000 })
         const cardTexts = await detailButtons.evaluateAll((buttons) => buttons.map((button) => {
           let element: HTMLElement | null = button as HTMLElement
-          for (let level = 0; level < 8 && element; level += 1, element = element.parentElement) {
+          for (let level = 0; level < 16 && element; level += 1, element = element.parentElement) {
             const text = element.innerText || ''
             if (text.includes('В пути:') && /\d{2}:\d{2}/.test(text)) return text.slice(0, 1400)
           }
           return ''
         }).filter(Boolean))
+        if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction} ${serviceDate}: ${cardTexts.length} card texts`)
         cardTexts.forEach((text, index) => {
-          const trip = parseCard(text, direction, addDays(localDate(), day), index, seenAt)
+          const trip = parseCard(text, direction, serviceDate, index, seenAt)
           if (trip) trips.push(trip)
         })
+      }
+      if (datesWithTrips > 0 && !trips.some((trip) => trip.direction === direction)) {
+        throw new Error(`Atlas опубликовал ${datesWithTrips} дат с рейсами, но карточки не распознаны`)
       }
     }
     await browser.close()
