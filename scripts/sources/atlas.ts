@@ -95,7 +95,8 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
       await searchButton.waitFor({ state: 'visible', timeout: 20_000 })
       await searchButton.click()
       await page.waitForSelector('[data-testid="price-calendar-item-button"]', { timeout: 20_000 })
-      await page.waitForTimeout(1_000)
+      const detailButtons = page.locator('button').filter({ hasText: 'Показать детали' })
+      await detailButtons.first().waitFor({ state: 'visible', timeout: 20_000 })
       if (await rejectCookies.count() === 1 && await rejectCookies.isVisible()) await rejectCookies.click()
       const dateButtons = page.locator('[data-testid="price-calendar-item-button"]')
       const dateCount = Math.min(await dateButtons.count(), horizonDays)
@@ -110,10 +111,12 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
         datesWithTrips += 1
         if (!page.url().includes(`date=${serviceDate}`)) {
           await button.click()
-          await page.waitForURL((url) => url.searchParams.get('date') === serviceDate, { timeout: 15_000 })
-          await page.waitForTimeout(500)
+          for (let attempt = 0; attempt < 40 && !page.url().includes(`date=${serviceDate}`); attempt += 1) {
+            await page.waitForTimeout(250)
+          }
+          if (!page.url().includes(`date=${serviceDate}`)) throw new Error(`Atlas не переключил календарь на ${serviceDate}`)
+          await page.waitForTimeout(750)
         }
-        const detailButtons = page.locator('button').filter({ hasText: 'Показать детали' })
         await detailButtons.first().waitFor({ state: 'visible', timeout: 15_000 })
         const cardTexts = await detailButtons.evaluateAll((buttons) => buttons.map((button) => {
           let element: HTMLElement | null = button as HTMLElement
