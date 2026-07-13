@@ -279,8 +279,14 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
   }, [])
 
   useEffect(() => {
-    const timer = window.setInterval(() => setRefreshTick((value) => value + 1), 60 * 60 * 1000)
-    return () => window.clearInterval(timer)
+    const refresh = () => setRefreshTick((value) => value + 1)
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refresh() }
+    const timer = window.setInterval(refresh, 5 * 60 * 1000)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   useEffect(() => {
