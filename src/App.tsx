@@ -279,7 +279,7 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
   }, [])
 
   useEffect(() => {
-    const timer = window.setInterval(() => setRefreshTick((value) => value + 1), 3 * 60 * 60 * 1000)
+    const timer = window.setInterval(() => setRefreshTick((value) => value + 1), 60 * 60 * 1000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -315,7 +315,7 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="На главную"><span className="brand-icon"><Icon name="bus" size={25} /></span><span><strong>ММ</strong><small>маршрутки</small></span></a>
         <nav><a href="#trips">Рейсы</a><button onClick={() => setShowSources(true)}>Источники</button><a href="#about">О сервисе</a></nav>
-        <div className="header-actions"><div className="header-note"><span></span> Обновление каждые 3 часа</div><button className="logout-button" onClick={onLogout}>Выйти</button></div>
+        <div className="header-actions"><div className="header-note"><span></span> Обновление каждый час в XX:05</div><button className="logout-button" onClick={onLogout}>Выйти</button></div>
       </header>
 
       <main id="top">
@@ -342,7 +342,7 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
 
         <section className="results-section" id="trips">
           <div className="content-width">
-            {demo && <div className="demo-banner"><strong>Демонстрационный режим.</strong> Подключите Workers KV, чтобы показывать данные, собранные каждые 3 часа.</div>}
+            {demo && <div className="demo-banner"><strong>Демонстрационный режим.</strong> Подключите Workers KV, чтобы показывать данные, собранные каждый час.</div>}
             {response?.stale && <div className="stale-banner">Обновление источников задерживается. Показан последний успешный снимок.</div>}
             <div className="results-heading">
               <div><span className="eyebrow">{cities.from} → {cities.to}</span><h2>{loading ? 'Ищем рейсы…' : `${visibleTrips.length} ${visibleTrips.length % 10 === 1 && visibleTrips.length !== 11 ? 'рейс' : visibleTrips.length % 10 > 1 && visibleTrips.length % 10 < 5 ? 'рейса' : 'рейсов'}`}</h2><p>{response ? `Последнее обновление: ${formatUpdated(response.generatedAt)} (Минск)` : 'Получаем данные перевозчиков'}</p></div>
@@ -365,7 +365,7 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
         <section className="trust-section" id="about">
           <div className="content-width trust-grid">
             <div><span className="eyebrow light">Как это работает</span><h2>Мы сравниваем.<br />Вы выбираете.</h2></div>
-            <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Проверяем прямые сайты и официальные площадки каждые 3 часа.</p></div>
+            <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Проверяем прямые сайты и официальные площадки каждый час.</p></div>
             <div className="trust-item"><span>02</span><strong>Убираем повторы</strong><p>Один физический рейс — одна карточка, даже если он продаётся в нескольких местах.</p></div>
             <div className="trust-item"><span>03</span><strong>Ведём к перевозчику</strong><p>Не принимаем оплату — вы завершаете бронирование на официальном сайте.</p></div>
           </div>
