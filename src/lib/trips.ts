@@ -66,7 +66,7 @@ export function projectTrip(trip: Trip, now = new Date()): Trip | null {
   const best = chooseBestBooking(bookingOptions)
   return { ...trip, bookingOptions, price: best.price, availability: best.availability, seats: best.seats,
     lastKnown: bookingOptions.every((option) => option.lastKnown),
-    lastSeenAt: bookingOptions.map((option) => option.observedAt!).sort().at(-1)! }
+    lastSeenAt: bookingOptions.map((option) => option.observedAt!).sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1)! }
 }
 
 export function mergeExactTrips(trips: Trip[]): Trip[] {
@@ -107,7 +107,7 @@ export function mergeExactTrips(trips: Trip[]): Trip[] {
       availability: best.availability,
       seats: best.seats,
       bookingOptions,
-      lastSeenAt: existing.lastSeenAt > trip.lastSeenAt ? existing.lastSeenAt : trip.lastSeenAt,
+      lastSeenAt: Date.parse(existing.lastSeenAt) > Date.parse(trip.lastSeenAt) ? existing.lastSeenAt : trip.lastSeenAt,
     })
   }
   return [...result.values()].sort((a, b) => a.departureAt.localeCompare(b.departureAt))

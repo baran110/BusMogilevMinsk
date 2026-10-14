@@ -1,14 +1,25 @@
 name: Обновление расписания
+run-name: collect/${{ inputs.mode }}/${{ inputs.slot }}
 
 on:
-  schedule:
-    # Основной запуск — в 05 минут каждого часа. Остальные расписания являются
-    # страховкой от задержек и пропусков GitHub Actions scheduler.
-    - cron: '5 * * * *'
-    - cron: '20 * * * *'
-    - cron: '35 * * * *'
-    - cron: '50 * * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [near, full]
+        default: near
+        required: true
+      slot:
+        description: 'Номер десятиминутного интервала UTC; задаёт таймер'
+        type: string
+        required: false
+      confirm:
+        description: 'Для публикации в рабочий KV введите publish'
+        type: string
+        required: true
+
+permissions:
+  contents: read
 
 concurrency:
   group: timetable-collector
@@ -16,65 +27,41 @@ concurrency:
 
 jobs:
   collect:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: Проверить секреты Cloudflare
-        shell: bash
-        run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Не задан CLOUDFLARE_API_TOKEN"; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Не задан CLOUDFLARE_ACCOUNT_ID"; exit 1; }
-          test -n "$KV_NAMESPACE_ID" || { echo "::error::Не задан KV_NAMESPACE_ID"; exit 1; }
-      - name: Определить необходимость резервного сбора
-        id: freshness
-        shell: bash
+      - name: Отклонить просроченный запуск таймера
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          SLOT: ${{ inputs.slot }}
         run: |
-          should_collect=true
-
-          if [[ "$EVENT_NAME" == "schedule" && "$EVENT_SCHEDULE" != "5 * * * *" ]]; then
-            today=$(TZ=Europe/Minsk date +%F)
-            api_url="https://bus-mogilev-minsk.pages.dev/api/trips?direction=mogilev-minsk&date=$today"
-            generated_at=$(curl --fail --silent --show-error --max-time 20 "$api_url" | jq -r '.generatedAt // empty' || true)
-
-            if [[ -n "$generated_at" ]]; then
-              generated_epoch=$(date -d "$generated_at" +%s)
-              now_epoch=$(date +%s)
-              age_minutes=$(( (now_epoch - generated_epoch) / 60 ))
-              echo "Возраст активного снимка: $age_minutes мин."
-
-              if (( age_minutes < 70 )); then
-                should_collect=false
-                echo "Основной часовой сбор уже выполнен — резервный запуск пропущен."
-              fi
-            else
-              echo "::warning::Не удалось определить свежесть снимка — резервный сбор будет выполнен."
-            fi
+          if [ -n "$SLOT" ]; then
+            [[ "$SLOT" =~ ^[0-9]{7,10}$ ]] || { echo "::error::Неверный слот"; exit 1; }
+            age=$(( $(date +%s) - SLOT * 600 ))
+            (( age >= -60 && age <= 600 )) || { echo "::error::Запуск слишком долго ожидал очередь"; exit 1; }
           fi
-
-          echo "should_collect=$should_collect" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@v4
-        if: steps.freshness.outputs.should_collect == 'true'
         with:
           version: 11.7.0
       - uses: actions/setup-node@v4
-        if: steps.freshness.outputs.should_collect == 'true'
         with:
           node-version: 22
           cache: pnpm
-      - if: steps.freshness.outputs.should_collect == 'true'
-        run: pnpm install --frozen-lockfile
-      - if: steps.freshness.outputs.should_collect == 'true'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Собрать и опубликовать рейсы
-        if: steps.freshness.outputs.should_collect == 'true'
-        run: pnpm collect
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test:run
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Собрать и опубликовать подтверждённые рейсы
+        timeout-minutes: ${{ inputs.mode == 'near' && 5 || 8 }}
+        env:
+          MODE: ${{ inputs.mode }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+        run: |
+          case "$MODE" in
+            near) pnpm collect --near ;;
+            full) pnpm collect ;;
+            *) echo "::error::Неизвестный режим"; exit 1 ;;
+          esac

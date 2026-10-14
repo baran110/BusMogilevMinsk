@@ -1,0 +1,11 @@
+name = "mm-routes-scheduler"
+main = "scheduler/index.ts"
+compatibility_date = "2026-07-12"
+workers_dev = false
+
+# Disabled deliberately. Enable only after the owner approves the production release.
+# [triggers]
+# crons = ["*/10 * * * *"]
+
+# Configure GITHUB_TOKEN as a Cloudflare secret. Fine-grained token:
+# only baran110/BusMogilevMinsk, Actions read/write; no contents write.

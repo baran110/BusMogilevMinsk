@@ -14,6 +14,8 @@
     "test:e2e": "playwright test",
     "collect": "tsx scripts/collect.ts",
     "collect:sample": "tsx scripts/collect.ts --local",
+    "diagnose:kv": "tsx scripts/diagnose-kv.ts",
+    "access:manage": "tsx scripts/manage-access.ts",
     "deploy:worker": "wrangler deploy --config wrangler.worker.toml"
   },
   "dependencies": {

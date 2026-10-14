@@ -1,14 +1,10 @@
 import type { Direction } from '../types'
 
 export const MINSK_OFFSET = '+03:00'
+const minskDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Minsk', year: 'numeric', month: '2-digit', day: '2-digit' })
 
 export function localDate(date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Minsk',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
+  return minskDateFormatter.format(date)
 }
 
 export function addDays(date: string, amount: number): string {

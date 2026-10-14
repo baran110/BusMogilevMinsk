@@ -1,6 +1,6 @@
 import { addDays, isDeparted, isValidDate, localDate } from '../../src/lib/date'
 import { isSnapshotExpired, isSnapshotStale, observationAge, projectTrip } from '../../src/lib/trips'
-import { isDirection, isManifest, isSnapshot } from '../../src/lib/validation'
+import { isDirection, isManifest, isSnapshotForDate } from '../../src/lib/validation'
 import type { Direction, DirectionSnapshot, SnapshotManifest, TripsResponse } from '../../src/types'
 import { authenticate, json, type AuthEnv } from './_auth'
 
@@ -22,15 +22,15 @@ export async function handleTripsRequest(request: Request, kv: KvReader, now = n
     directions: { 'mogilev-minsk': 'backup:mogilev-minsk', 'minsk-mogilev': 'backup:minsk-mogilev' }, sources: [] }
   let snapshot = await kv.get<DirectionSnapshot>(manifest.directions[direction], 'json')
   let usedBackup = !isManifest(rawManifest)
-  if (!isSnapshot(snapshot, direction) || isSnapshotExpired(snapshot.generatedAt, now)) {
+  if (!isSnapshotForDate(snapshot, direction, date) || isSnapshotExpired(snapshot.generatedAt, now)) {
     const previousKey = manifest.previousDirections?.[direction]
     snapshot = previousKey ? await kv.get<DirectionSnapshot>(previousKey, 'json') : null
-    if (!isSnapshot(snapshot, direction) || isSnapshotExpired(snapshot.generatedAt, now)) {
+    if (!isSnapshotForDate(snapshot, direction, date) || isSnapshotExpired(snapshot.generatedAt, now)) {
       snapshot = await kv.get<DirectionSnapshot>(`backup:${direction}`, 'json')
     }
     usedBackup = true
   }
-  if (!isSnapshot(snapshot, direction) || isSnapshotExpired(snapshot.generatedAt, now)) {
+  if (!isSnapshotForDate(snapshot, direction, date) || isSnapshotExpired(snapshot.generatedAt, now)) {
     return json({ error: 'Актуальное расписание временно недоступно' }, 503, { 'Cache-Control': 'no-store', 'Retry-After': '300' })
   }
   const trips = snapshot.trips.filter((trip) => trip.serviceDate === date && !isDeparted(trip.departureAt, now))

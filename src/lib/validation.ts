@@ -18,7 +18,7 @@ export function safeBookingUrl(sourceId: string, value: string): boolean {
 }
 
 export function isTrip(value: unknown): value is Trip {
-  if (!object(value) || !text(value.id) || !isDirection(value.direction) || !isValidDate(value.serviceDate)
+  if (!object(value) || !text(value.id) || String(value.id).startsWith('demo-') || !isDirection(value.direction) || !isValidDate(value.serviceDate)
     || !isValidInstant(value.departureAt) || localDate(new Date(value.departureAt)) !== value.serviceDate
     || !isValidInstant(value.lastSeenAt) || !text(value.carrierId) || !text(value.carrierName)
     || !text(value.originStop) || !text(value.destinationStop) || value.currency !== 'BYN'
@@ -48,6 +48,15 @@ export function isSnapshot(value: unknown, direction: Direction): value is Direc
   return object(value) && [1, 2].includes(Number(value.schemaVersion)) && value.direction === direction
     && isValidInstant(value.generatedAt) && Array.isArray(value.trips)
     && value.trips.every((trip: unknown) => isTrip(trip) && trip.direction === direction) && isSources(value.sources)
+}
+
+// Full snapshots are validated before publication. A request validates its selected date
+// while scanning the rest only for envelope/direction corruption, keeping free Worker CPU bounded.
+export function isSnapshotForDate(value: unknown, direction: Direction, date: string): value is DirectionSnapshot {
+  return object(value) && [1, 2].includes(Number(value.schemaVersion)) && value.direction === direction
+    && isValidInstant(value.generatedAt) && Array.isArray(value.trips) && isSources(value.sources)
+    && value.trips.every((trip: unknown) => object(trip) && trip.direction === direction
+      && typeof trip.serviceDate === 'string' && (trip.serviceDate !== date || isTrip(trip)))
 }
 
 export function isManifest(value: unknown): value is SnapshotManifest {

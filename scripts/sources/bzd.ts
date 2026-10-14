@@ -67,6 +67,8 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
     const arrivalAt = arrivalFromClock(serviceDate, departureAt, arrival)
     const durationMinutes = parseDuration(durationText) ?? (arrivalAt ? (Date.parse(arrivalAt) - Date.parse(departureAt)) / 60000 : null)
     const bookingUrl = href ? new URL(href, sourceUrl).toString() : bzdRouteUrl(direction, serviceDate)
+    const linkedDate = new URL(bookingUrl).searchParams.get('date')
+    if (!linkedDate || linkedDate !== serviceDate) throw new Error('БЖД: дата рейса в ссылке не совпадает с запросом')
 
     return [{
       id: `bzd:${serviceDate}:${trainId}`,

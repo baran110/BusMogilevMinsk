@@ -1,9 +1,12 @@
 import { chromium } from '@playwright/test'
-import { addMinutes, localDate, minskIso } from '../../src/lib/date'
+import { addDays, localDate } from '../../src/lib/date'
 import { slugify, vehicleTypeFromName } from '../../src/lib/trips'
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
 import { errorResult, type SourceResult } from '../lib/source'
 import { arrivalFromClock, knownNumber, validatedDeparture } from '../lib/normalize'
+import { sourceSignal, throwIfSourceExpired } from '../lib/runtime'
+import type { SourceCoverage } from '../../src/types'
+import { requestedPairs } from '../lib/coverage'
 
 const urls: Record<Direction, string> = {
   'mogilev-minsk': 'https://atlasbus.by/Маршруты/Могилёв/Минск',
@@ -44,6 +47,8 @@ export function parseCard(text: string, direction: Direction, date: string, inde
   if (times.length < 2) return undefined
   const firstTime = lines.indexOf(times[0])
   const secondTime = lines.indexOf(times[1], firstTime + 1)
+  // A changed URL alone does not prove that the previous date's cards have finished updating.
+  if (dateFromCalendarLabel(lines[firstTime + 1] || '', date) !== date) return undefined
   const originStop = lines[firstTime + 3] || (direction === 'mogilev-minsk' ? 'Могилёв' : 'Минск')
   const destinationStop = lines[secondTime + 2] || (direction === 'mogilev-minsk' ? 'Минск' : 'Могилёв')
   const durationMatch = text.match(/В пути:\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
@@ -83,12 +88,16 @@ export function parseCard(text: string, direction: Direction, date: string, inde
 
 export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
   const seenAt = new Date().toISOString()
-  let browser
+  const trips: Trip[] = []
+  const coverage: SourceCoverage[] = []
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
   try {
     browser = await chromium.launch({ headless: true })
+    const abort = () => { void browser?.close().catch(() => undefined) }
+    sourceSignal()?.addEventListener('abort', abort, { once: true })
     const page = await browser.newPage({ locale: 'ru-RU', timezoneId: 'Europe/Minsk' })
-    const trips: Trip[] = []
     for (const direction of ['mogilev-minsk', 'minsk-mogilev'] as const) {
+      throwIfSourceExpired()
       await page.goto(urls[direction], { waitUntil: 'domcontentloaded', timeout: 45_000 })
       await page.waitForSelector('button', { timeout: 20_000 })
       const rejectCookies = page.getByRole('button', { name: 'Отклонить все' })
@@ -105,11 +114,17 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
       let datesWithTrips = 0
       if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction}: ${dateCount} calendar dates, ${page.url()}`)
       for (let day = 0; day < dateCount; day += 1) {
+        throwIfSourceExpired()
         const button = dateButtons.nth(day)
         const label = await button.innerText()
         const serviceDate = dateFromCalendarLabel(label)
         if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction}: ${JSON.stringify(label)} -> ${serviceDate || 'unknown'}`)
-        if (!serviceDate || label.includes('Нет рейсов') || !await button.isEnabled()) continue
+        if (!serviceDate || serviceDate >= addDays(localDate(), horizonDays)) continue
+        if (label.includes('Нет рейсов')) {
+          coverage.push({ direction, date: serviceDate, checkedAt: new Date().toISOString(), status: 'ok' })
+          continue
+        }
+        if (!await button.isEnabled()) continue
         datesWithTrips += 1
         if (!page.url().includes(`date=${serviceDate}`)) {
           await button.click()
@@ -129,19 +144,33 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
           return ''
         }).filter(Boolean))
         if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction} ${serviceDate}: ${cardTexts.length} card texts`)
+        const observedAt = new Date().toISOString()
+        const parsed: Trip[] = []
         cardTexts.forEach((text, index) => {
-          const trip = parseCard(text, direction, serviceDate, index, seenAt)
+          const trip = parseCard(text, direction, serviceDate, index, observedAt)
+          if (trip) parsed.push(trip)
+        })
+        if (!parsed.length) throw new Error(`Atlas: дата карточек ${serviceDate} не подтверждена`)
+        parsed.forEach((trip) => {
           if (trip) trips.push(trip)
         })
+        coverage.push({ direction, date: serviceDate, checkedAt: observedAt, status: 'ok' })
       }
       if (datesWithTrips > 0 && !trips.some((trip) => trip.direction === direction)) {
         throw new Error(`Atlas опубликовал ${datesWithTrips} дат с рейсами, но карточки не распознаны`)
       }
     }
     await browser.close()
-    return { trips, health: { id: 'atlas', name: 'Atlas', kind: 'platform', url: 'https://atlasbus.by/', status: 'ok', checkedAt: seenAt, lastSuccessAt: seenAt, tripsFound: trips.length } }
+    sourceSignal()?.removeEventListener('abort', abort)
+    return { trips, health: { id: 'atlas', name: 'Atlas', kind: 'platform', url: 'https://atlasbus.by/', status: 'ok', checkedAt: new Date().toISOString(), lastSuccessAt: coverage.map((item) => item.checkedAt).sort().at(-1), tripsFound: trips.length, coverage } }
   } catch (error) {
     await browser?.close().catch(() => undefined)
-    return errorResult('atlas', 'Atlas', 'platform', 'https://atlasbus.by/', error)
+    const failed = errorResult('atlas', 'Atlas', 'platform', 'https://atlasbus.by/', error)
+    for (const pair of requestedPairs(horizonDays)) {
+      if (!coverage.some((item) => item.direction === pair.direction && item.date === pair.date)) coverage.push({ ...pair, status: 'error',
+        checkedAt: new Date().toISOString(), message: failed.health.message })
+    }
+    return { trips, health: { ...failed.health, status: coverage.some((item) => item.status === 'ok') ? 'stale' : 'error', coverage,
+      tripsFound: trips.length, lastSuccessAt: coverage.filter((item) => item.status === 'ok').map((item) => item.checkedAt).sort().at(-1) } }
   }
 }
