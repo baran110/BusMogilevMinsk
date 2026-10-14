@@ -27,8 +27,8 @@ export function fixtureApi(): Plugin {
           if (key === 'out' || key === 'back') {
             const snapshot = value as DirectionSnapshot
             const train = fixtureTrip(date, snapshot.direction)
-            train.id += ':train'; train.carrierName = 'Тестовый поезд'; train.vehicleType = 'train'; train.price = 30
-            train.bookingOptions[0].price = 30
+            train.id += ':train'; train.carrierName = 'Тестовый поезд'; train.vehicleType = 'train'; train.price = 150
+            train.bookingOptions[0].price = 150
             const bus = fixtureTrip(date, snapshot.direction)
             bus.id += ':bus'; bus.carrierName = 'Тестовый автобус'; bus.vehicleType = 'bus'; bus.price = null; bus.availability = 'unknown'; bus.seats = undefined
             bus.bookingOptions[0].price = null; bus.bookingOptions[0].availability = 'unknown'; bus.bookingOptions[0].seats = undefined

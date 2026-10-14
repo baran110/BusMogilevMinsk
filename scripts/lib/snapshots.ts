@@ -1,4 +1,4 @@
-import { isDeparted } from '../../src/lib/date'
+import { addDays, isDeparted, localDate } from '../../src/lib/date'
 import { mergeExactTrips, observationAge, SCHEDULE_MAX_AGE_MS } from '../../src/lib/trips'
 import { DIRECTIONS, isTrip } from '../../src/lib/validation'
 import type { Direction, DirectionSnapshot, SnapshotManifest, SourceHealth, Trip } from '../../src/types'
@@ -36,7 +36,11 @@ export function buildSnapshots(results: SourceResult[], previous: Partial<Record
     for (const old of previousHealth?.coverage ?? []) {
       if (observationAge(old.checkedAt, now) <= SCHEDULE_MAX_AGE_MS && !coverage.some((item) => item.date === old.date && item.direction === old.direction)) coverage.push(old)
     }
+    const today = localDate(now)
+    const nearComplete = DIRECTIONS.every((direction) => [0, 1, 2].every((day) => health.coverage?.some((item) => item.direction === direction && item.date === addDays(today, day) && item.status === 'ok')))
+    const completeAt = nearComplete ? health.coverage!.filter((item) => item.status === 'ok' && item.date >= today && item.date < addDays(today, 3)).map((item) => item.checkedAt).sort()[0] : previousHealth?.lastCompleteSuccessAt
     return { ...health, coverage, lastSuccessAt: health.lastSuccessAt ?? previousHealth?.lastSuccessAt,
+      lastCompleteSuccessAt: completeAt, failureStreak: health.status === 'unchecked' ? 0 : nearComplete ? 0 : (previousHealth?.failureStreak ?? 0) + 1,
       status: health.status === 'error' && retainedIds.has(health.id) ? 'stale' : health.status }
   })
   const generatedAt = now.toISOString()

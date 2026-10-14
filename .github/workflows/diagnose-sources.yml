@@ -27,4 +27,5 @@ jobs:
       - name: Только три даты, без секретов и записи KV
         env:
           SOURCE_IDS: bzd,atlas
+          DEBUG_SOURCE_SCHEMA: '1'
         run: pnpm exec tsx scripts/collect.ts --local --near

@@ -19,7 +19,16 @@ export async function handleHealthRequest(request: Request, kv: KvReader, now = 
       const today = localDate(now)
       const complete = (['mogilev-minsk', 'minsk-mogilev'] as const).every((direction) => [0, 1, 2].every((day) => source.coverage?.some((item) =>
         item.direction === direction && item.date === addDays(today, day) && item.status === 'ok' && observationAge(item.checkedAt, now) <= 20 * 60000)))
-      return json({ healthy: complete, source: sourceId, status: source.status, lastSuccessAt: source.lastSuccessAt ?? null }, complete ? 200 : 503)
+      const tolerated = source.failureStreak === 1 && observationAge(source.lastCompleteSuccessAt, now) <= 20 * 60000
+      const healthy = complete || tolerated
+      return json({ healthy, source: sourceId, status: source.status, failures: source.failureStreak ?? null, lastSuccessAt: source.lastSuccessAt ?? null }, healthy ? 200 : 503)
+    }
+    if (url.searchParams.get('check') === 'full') {
+      const today = localDate(now)
+      const coverage = manifest.sources.flatMap((source) => source.coverage ?? [])
+      const healthy = (['mogilev-minsk', 'minsk-mogilev'] as const).every((direction) => Array.from({ length: 27 }, (_, i) => addDays(today, i + 3))
+        .every((date) => coverage.some((item) => item.direction === direction && item.date === date && item.status === 'ok' && observationAge(item.checkedAt, now) <= 75 * 60000)))
+      return json({ healthy, reason: healthy ? 'ok' : 'full_horizon_delayed' }, healthy ? 200 : 503)
     }
     const snapshotsPresent = (await Promise.all(Object.values(manifest.directions).map((key) => kv.get<unknown>(key, 'json')))).every((value) =>
       !!value && typeof value === 'object' && 'trips' in value && Array.isArray(value.trips))

@@ -6,11 +6,14 @@ const [command, argument] = process.argv.slice(2)
 const directory = resolve('.private-access')
 const registryPath = resolve(directory, 'registry.json')
 interface Grant { id: string; hash: string; revoked?: boolean }
+const randomValue = (bytes: number) => Array.from(randomBytes(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('')
 
 async function save(registry: Grant[], secret: string): Promise<void> {
   await writeFile(registryPath, JSON.stringify(registry, null, 2), { mode: 0o600 }); await chmod(registryPath, 0o600)
   const path = resolve(directory, 'cloudflare-secrets.json')
   await writeFile(path, JSON.stringify({ ACCESS_KEYS: JSON.stringify(registry), SESSION_SECRET: secret }, null, 2), { mode: 0o600 }); await chmod(path, 0o600)
+  const secretPath = resolve(directory, 'session-secret.txt')
+  await writeFile(secretPath, secret, { mode: 0o600 }); await chmod(secretPath, 0o600)
 }
 
 if (command === 'issue' && /^[1-9]$|^10$/.test(argument || '')) {
@@ -22,12 +25,12 @@ if (command === 'issue' && /^[1-9]$|^10$/.test(argument || '')) {
   const issued: string[] = []
   for (let i = 0; i < count; i++) {
     const id = `passenger-${String(i + 1).padStart(2, '0')}`
-    const key = `MM-${randomBytes(32).toString('base64url')}`
+    const key = `MM-${randomValue(32)}`
     registry.push({ id, hash: createHash('sha256').update(key).digest('hex') })
     issued.push(`${id}: ${key}`)
   }
   await writeFile(resolve(directory, 'issued-keys.txt'), issued.join('\n') + '\n', { mode: 0o600 })
-  await save(registry, randomBytes(48).toString('base64url'))
+  await save(registry, randomValue(48))
   console.log(`Создано ${count} ключей в .private-access. Значения ключей не выводятся и не отправляются в Cloudflare.`)
 } else if (command === 'revoke' && /^passenger-\d{2}$/.test(argument || '')) {
   const registry = JSON.parse(await readFile(registryPath, 'utf8')) as Grant[]

@@ -12,7 +12,7 @@ import {
   localDate,
   reverseDirection,
 } from './lib/date'
-import { chooseBestBooking } from './lib/trips'
+import { chooseBestBooking, projectTrip } from './lib/trips'
 import type { Direction, SourceHealth, Trip, TripsResponse, VehicleType } from './types'
 
 type SortMode = 'time' | 'price' | 'duration'
@@ -21,7 +21,7 @@ interface Filters {
   timeFrom: string
   timeTo: string
   priceMin: number
-  priceMax: number
+  priceMax: number | null
   carrier: string
   vehicle: VehicleType | 'all'
   originStop: string
@@ -33,7 +33,7 @@ const initialFilters: Filters = {
   timeFrom: '00:00',
   timeTo: '23:59',
   priceMin: 0,
-  priceMax: 100,
+  priceMax: null,
   carrier: 'all',
   vehicle: 'all',
   originStop: 'all',
@@ -104,8 +104,8 @@ function FilterPanel({ filters, setFilters, trips, mobile, close }: {
       <div className="filter-block">
         <label>Цена, BYN</label>
         <div className="split-inputs">
-          <div><span>от</span><input type="number" min="0" max="100" value={filters.priceMin} onChange={(event) => update('priceMin', Number(event.target.value))} /></div>
-          <div><span>до</span><input type="number" min="0" max="100" value={filters.priceMax} onChange={(event) => update('priceMax', Number(event.target.value))} /></div>
+          <div><span>от</span><input type="number" min="0" value={filters.priceMin} onChange={(event) => update('priceMin', Number(event.target.value))} /></div>
+          <div><span>до</span><input type="number" min="0" value={filters.priceMax ?? ''} placeholder="Без предела" onChange={(event) => update('priceMax', event.target.value === '' ? null : Number(event.target.value))} /></div>
         </div>
       </div>
       <div className="filter-block">
@@ -301,14 +301,17 @@ function TripsApp({ onLogout, onExpired, logoutError }: { onLogout: () => void; 
     return () => { document.body.style.overflow = '' }
   }, [mobileFilters, showSources])
 
-  const trips = response?.trips || []
+  const trips = useMemo(() => (response?.trips ?? []).flatMap((trip) => {
+    const projected = projectTrip(trip, clock)
+    return projected ? [projected] : []
+  }), [response, clock])
   const visibleTrips = useMemo(() => {
     const filtered = trips.filter((trip) => {
       const time = formatTime(trip.departureAt)
       return !isDeparted(trip.departureAt, clock)
         && (filters.showSoldOut || trip.availability !== 'sold_out')
         && time >= filters.timeFrom && time <= filters.timeTo
-        && (trip.price === null ? filters.priceMin === initialFilters.priceMin && filters.priceMax === initialFilters.priceMax : trip.price >= filters.priceMin && trip.price <= filters.priceMax)
+        && (trip.price === null ? filters.priceMin === initialFilters.priceMin && filters.priceMax === null : trip.price >= filters.priceMin && (filters.priceMax === null || trip.price <= filters.priceMax))
         && (filters.carrier === 'all' || trip.carrierName === filters.carrier)
         && (filters.vehicle === 'all' || trip.vehicleType === filters.vehicle)
         && (filters.originStop === 'all' || trip.originStop === filters.originStop)

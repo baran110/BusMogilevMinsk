@@ -11,9 +11,12 @@ try {
   console.log(JSON.stringify({ manifestPresent: !!manifest, manifestValid: isManifest(manifest), generatedAt: manifest?.generatedAt,
     ageMinutes: manifest?.generatedAt ? Math.round(observationAge(manifest.generatedAt, new Date()) / 60000) : null }))
   for (const direction of DIRECTIONS) {
-    const active = isManifest(manifest) ? await readKv<DirectionSnapshot>(manifest.directions[direction]) : undefined
+    const activeKey = manifest?.directions?.[direction]
+    // Inspect valid legacy references too; a stricter new validator must not masquerade as a missing key.
+    const allowedReference = typeof activeKey === 'string' && activeKey.length < 200 && activeKey.startsWith('snapshot:') && activeKey.endsWith(`:${direction}`)
+    const active = allowedReference ? await readKv<DirectionSnapshot>(activeKey) : undefined
     const backup = await readKv<DirectionSnapshot>(`backup:${direction}`)
-    console.log(JSON.stringify({ direction, activePresent: !!active, activeValid: isSnapshot(active, direction),
+    console.log(JSON.stringify({ direction, activeReferenceRead: allowedReference, activePresent: !!active, activeValid: isSnapshot(active, direction),
       generatedAt: active?.generatedAt, trips: active?.trips?.length ?? null, backupPresent: !!backup, backupValid: isSnapshot(backup, direction) }))
   }
 } catch (error) {

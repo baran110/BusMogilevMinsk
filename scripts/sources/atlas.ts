@@ -120,6 +120,7 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
         const serviceDate = dateFromCalendarLabel(label)
         if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction}: ${JSON.stringify(label)} -> ${serviceDate || 'unknown'}`)
         if (!serviceDate || serviceDate >= addDays(localDate(), horizonDays)) continue
+        try {
         if (label.includes('Нет рейсов')) {
           coverage.push({ direction, date: serviceDate, checkedAt: new Date().toISOString(), status: 'ok' })
           continue
@@ -135,7 +136,11 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
           await page.waitForTimeout(750)
         }
         await detailButtons.first().waitFor({ state: 'visible', timeout: 15_000 })
-        const cardTexts = await detailButtons.evaluateAll((buttons) => buttons.map((button) => {
+        let parsed: Trip[] = []
+        let cardTexts: string[] = []
+        for (let attempt = 0; attempt < 30; attempt++) {
+        throwIfSourceExpired()
+        cardTexts = await detailButtons.evaluateAll((buttons) => buttons.map((button) => {
           let element: HTMLElement | null = button as HTMLElement
           for (let level = 0; level < 16 && element; level += 1, element = element.parentElement) {
             const text = element.innerText || ''
@@ -145,16 +150,28 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
         }).filter(Boolean))
         if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction} ${serviceDate}: ${cardTexts.length} card texts`)
         const observedAt = new Date().toISOString()
-        const parsed: Trip[] = []
+        parsed = []
         cardTexts.forEach((text, index) => {
           const trip = parseCard(text, direction, serviceDate, index, observedAt)
           if (trip) parsed.push(trip)
         })
+        if (parsed.length > 0 && parsed.length === cardTexts.length) break
+        await page.waitForTimeout(250)
+        }
+        if (process.env.DEBUG_SOURCE_SCHEMA === '1' && !parsed.length) {
+          console.log(JSON.stringify({ atlasSchema: { direction, requestedDate: serviceDate,
+            cards: cardTexts.length, datePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => dateFromCalendarLabel(line, serviceDate) ? index : -1).filter((index) => index >= 0)),
+            timePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => /^\d{2}:\d{2}$/.test(line.trim()) ? index : -1).filter((index) => index >= 0)) } }))
+        }
         if (!parsed.length) throw new Error(`Atlas: дата карточек ${serviceDate} не подтверждена`)
         parsed.forEach((trip) => {
           if (trip) trips.push(trip)
         })
-        coverage.push({ direction, date: serviceDate, checkedAt: observedAt, status: 'ok' })
+        coverage.push({ direction, date: serviceDate, checkedAt: new Date().toISOString(), status: parsed.length === cardTexts.length ? 'ok' : 'error' })
+        } catch (error) {
+          throwIfSourceExpired()
+          coverage.push({ direction, date: serviceDate, status: 'error', checkedAt: new Date().toISOString(), message: error instanceof Error ? error.message.slice(0, 180) : 'Дата не подтверждена' })
+        }
       }
       if (datesWithTrips > 0 && !trips.some((trip) => trip.direction === direction)) {
         throw new Error(`Atlas опубликовал ${datesWithTrips} дат с рейсами, но карточки не распознаны`)
@@ -162,7 +179,11 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
     }
     await browser.close()
     sourceSignal()?.removeEventListener('abort', abort)
-    return { trips, health: { id: 'atlas', name: 'Atlas', kind: 'platform', url: 'https://atlasbus.by/', status: 'ok', checkedAt: new Date().toISOString(), lastSuccessAt: coverage.map((item) => item.checkedAt).sort().at(-1), tripsFound: trips.length, coverage } }
+    for (const pair of requestedPairs(horizonDays)) {
+      if (!coverage.some((item) => item.direction === pair.direction && item.date === pair.date)) coverage.push({ ...pair, status: 'error', checkedAt: new Date().toISOString(), message: 'Дата не подтверждена календарём Atlas' })
+    }
+    return { trips, health: { id: 'atlas', name: 'Atlas', kind: 'platform', url: 'https://atlasbus.by/', status: coverage.some((item) => item.status === 'error') ? 'stale' : 'ok', checkedAt: new Date().toISOString(), lastSuccessAt: coverage.filter((item) => item.status === 'ok').map((item) => item.checkedAt).sort().at(-1), tripsFound: trips.length, coverage,
+      message: coverage.find((item) => item.status === 'error')?.message } }
   } catch (error) {
     await browser?.close().catch(() => undefined)
     const failed = errorResult('atlas', 'Atlas', 'platform', 'https://atlasbus.by/', error)

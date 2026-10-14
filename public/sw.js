@@ -7,8 +7,14 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))))
-  self.clients.claim()
+  event.waitUntil((async () => {
+    await Promise.all((await caches.keys()).filter((key) => key !== CACHE).map((key) => caches.delete(key)))
+    await self.clients.claim()
+    // Retire already-open clients that still contain the unsafe demo fallback.
+    for (const client of await self.clients.matchAll({ type: 'window' })) {
+      if (!new URL(client.url).pathname.startsWith('/api/')) await client.navigate(client.url)
+    }
+  })())
 })
 
 self.addEventListener('fetch', (event) => {

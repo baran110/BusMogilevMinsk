@@ -62,6 +62,8 @@ export interface SourceHealth {
   tripsFound?: number
   message?: string
   coverage?: SourceCoverage[]
+  lastCompleteSuccessAt?: string
+  failureStreak?: number
 }
 
 export interface TripsResponse {

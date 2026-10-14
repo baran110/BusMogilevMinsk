@@ -109,7 +109,15 @@ export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
     const response = await fetchWithTimeout(bzdRouteUrl(direction, date))
     const html = await response.text()
     const trips = parseBzdHtml(html, direction, date, new Date().toISOString())
-    if (!trips.length && !/поезда не найдены|поездов не найдено|нет поездов/iu.test(decodeText(html))) throw new Error('БЖД: выдача не распознана; это не подтверждение отсутствия поездов')
+    if (!trips.length && !/поезда не найдены|поездов не найдено|нет поездов/iu.test(decodeText(html))) {
+      if (process.env.DEBUG_SOURCE_SCHEMA === '1') console.log(JSON.stringify({ bzdSchema: {
+        title: decodeText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 120),
+        challenge: /challenge-platform|__cf_chl|captcha|проверка.*робот/iu.test(html),
+        classes: [...new Set([...html.matchAll(/class="([^"]+)"/g)].map((match) => match[1]).filter((value) => /sch-|train|route|captcha/i.test(value)))].slice(0, 35),
+        dateInputs: [...html.matchAll(/<input[^>]+(?:name|id)="([^" ]*date[^" ]*)"/g)].map((match) => match[1]).slice(0, 10),
+      } }))
+      throw new Error('БЖД: выдача не распознана; это не подтверждение отсутствия поездов')
+    }
     const from = direction === 'mogilev-minsk' ? /могил[её]в/iu : /минск/iu
     const to = direction === 'mogilev-minsk' ? /минск/iu : /могил[её]в/iu
     if (trips.some((trip) => !from.test(trip.originStop) || !to.test(trip.destinationStop))) throw new Error('БЖД вернула другое направление')

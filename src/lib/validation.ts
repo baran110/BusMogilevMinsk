@@ -4,6 +4,8 @@ import type { Direction, DirectionSnapshot, SnapshotManifest, Trip, TripsRespons
 
 export const DIRECTIONS = ['mogilev-minsk', 'minsk-mogilev'] as const
 const hosts = new Map(registry.map((source) => [source.id, new Set([new URL(source.url).hostname, new URL(source.bookingUrl).hostname])]))
+const sourceHosts = new Map(registry.map((source) => [source.id, new Set([new URL(source.url).hostname, new URL(source.bookingUrl).hostname,
+  ...('apiUrl' in source && typeof source.apiUrl === 'string' ? [new URL(source.apiUrl).hostname] : [])])]))
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const text = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 500
 const numberOrNull = (value: unknown) => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0)
@@ -15,6 +17,11 @@ export function safeBookingUrl(sourceId: string, value: string): boolean {
     const url = new URL(value)
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && !!hosts.get(sourceId)?.has(url.hostname)
   } catch { return false }
+}
+
+function safeSourceUrl(sourceId: string, value: string): boolean {
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && !url.port && !!sourceHosts.get(sourceId)?.has(url.hostname) }
+  catch { return false }
 }
 
 export function isTrip(value: unknown): value is Trip {
@@ -38,8 +45,9 @@ export function isTrip(value: unknown): value is Trip {
 function isSources(value: unknown): boolean {
   return Array.isArray(value) && value.every((source: unknown) => object(source) && text(source.id) && text(source.name)
     && ['carrier', 'platform'].includes(String(source.kind)) && typeof source.url === 'string'
-    && safeBookingUrl(String(source.id), source.url) && ['ok', 'error', 'stale', 'unchecked'].includes(String(source.status))
-    && ['checkedAt', 'lastSuccessAt'].every((field) => source[field] === undefined || isValidInstant(source[field]))
+    && safeSourceUrl(String(source.id), source.url) && ['ok', 'error', 'stale', 'unchecked'].includes(String(source.status))
+    && ['checkedAt', 'lastSuccessAt', 'lastCompleteSuccessAt'].every((field) => source[field] === undefined || isValidInstant(source[field]))
+    && (source.failureStreak === undefined || (Number.isInteger(source.failureStreak) && Number(source.failureStreak) >= 0))
     && (source.coverage === undefined || (Array.isArray(source.coverage) && source.coverage.every((item: unknown) =>
       object(item) && isDirection(item.direction) && isValidDate(item.date) && isValidInstant(item.checkedAt) && ['ok', 'error'].includes(String(item.status))))))
 }
