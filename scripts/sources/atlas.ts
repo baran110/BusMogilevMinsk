@@ -3,6 +3,7 @@ import { addMinutes, localDate, minskIso } from '../../src/lib/date'
 import { slugify, vehicleTypeFromName } from '../../src/lib/trips'
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
 import { errorResult, type SourceResult } from '../lib/source'
+import { arrivalFromClock, knownNumber, validatedDeparture } from '../lib/normalize'
 
 const urls: Record<Direction, string> = {
   'mogilev-minsk': 'https://atlasbus.by/Маршруты/Могилёв/Минск',
@@ -46,23 +47,23 @@ export function parseCard(text: string, direction: Direction, date: string, inde
   const originStop = lines[firstTime + 3] || (direction === 'mogilev-minsk' ? 'Могилёв' : 'Минск')
   const destinationStop = lines[secondTime + 2] || (direction === 'mogilev-minsk' ? 'Минск' : 'Могилёв')
   const durationMatch = text.match(/В пути:\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
-  const durationMinutes = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : 180
+  const departureAt = validatedDeparture(date, times[0])
+  const arrivalAt = arrivalFromClock(date, departureAt, times[1])
+  const durationMinutes = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : arrivalAt ? (Date.parse(arrivalAt) - Date.parse(departureAt)) / 60000 : null
   const priceLine = lines.find((line) => /^\d+(?:[.,]\d+)?\s*[^A-Za-zА-Яа-я0-9]*$/u.test(line))
-  const price = Number.parseFloat(priceLine?.replace(',', '.') || '0')
-  if (!price) return undefined
+  const price = knownNumber(priceLine?.match(/^\d+(?:[.,]\d+)?/)?.[0])
   const soldOut = /нет мест/i.test(text)
-  const availability: AvailabilityStatus = soldOut ? 'sold_out' : 'available'
   const seatsMatch = text.match(/свободно\s+(\d+)\+?\s+мест/i)
   const seats = soldOut ? 0 : /последнее место/i.test(text) ? 1 : seatsMatch ? Number(seatsMatch[1]) : undefined
+  const availability: AvailabilityStatus = seats === 0 ? 'sold_out' : seats === undefined ? 'unknown' : 'available'
   const vehicleName = lines.find((line) => /sprinter|crafter|maz|маз|yutong|голаз|mercedes|volkswagen/i.test(line))
-  const departureAt = minskIso(date, times[0])
-  const carrierName = 'Перевозчик Atlas'
+  const carrierName = 'Перевозчик не указан (Atlas)'
   return {
     id: `atlas:${direction}:${date}:${times[0]}:${slugify(originStop)}:${index}`,
     direction,
     serviceDate: date,
     departureAt,
-    arrivalAt: addMinutes(departureAt, durationMinutes),
+    arrivalAt,
     durationMinutes,
     carrierId: 'atlas-partner',
     carrierName,
@@ -74,7 +75,8 @@ export function parseCard(text: string, direction: Direction, date: string, inde
     currency: 'BYN',
     availability,
     seats,
-    bookingOptions: [{ sourceId: 'atlas', sourceName: 'Atlas', sourceKind: 'platform', url: `${urls[direction]}?date=${date}&passengers=1`, price, currency: 'BYN', availability, seats }],
+    bookingOptions: [{ sourceId: 'atlas', sourceName: 'Atlas', sourceKind: 'platform', url: `${urls[direction]}?date=${date}&passengers=1`, price, currency: 'BYN', availability, seats,
+      observedAt: seenAt, priceObservedAt: price === null ? undefined : seenAt, availabilityObservedAt: availability === 'unknown' ? undefined : seenAt }],
     lastSeenAt: seenAt,
   }
 }

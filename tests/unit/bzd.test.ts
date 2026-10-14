@@ -23,7 +23,7 @@ describe('БЖД adapter', () => {
       vehicleType: 'train',
       durationMinutes: 163,
       price: 25.28,
-      availability: 'available',
+      availability: 'unknown',
       originStop: 'Могилёв-1',
       destinationStop: 'Минск-Пассажирский',
     })

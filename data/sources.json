@@ -1,28 +1,267 @@
 [
-  { "id": "atlas", "name": "Atlas", "kind": "platform", "url": "https://atlasbus.by/", "bookingUrl": "https://atlasbus.by/Маршруты/Могилёв/Минск", "adapter": "atlas", "enabled": true, "note": "Публичная выдача агрегатора; партнёр показывается только если он однозначно указан" },
-  { "id": "avtoslava", "name": "АвтоСлава", "kind": "carrier", "url": "https://avto-slava.by/", "bookingUrl": "https://avto-slava.by/", "adapter": "transporter-api", "enabled": true },
-  { "id": "minsk-express", "name": "Минск Экспресс", "kind": "carrier", "url": "https://mogilevminsk.by/", "bookingUrl": "https://mogilevminsk.by/", "adapter": "transporter-api", "enabled": true },
-  { "id": "vitexpress", "name": "ВитЭкспресс", "kind": "carrier", "url": "https://vitexpress.by/", "bookingUrl": "https://vitexpress.by/online-bron", "adapter": "transporter-api", "enabled": true, "note": "Официальный DriveProf API, города Могилёв 15 и Минск 18" },
-  { "id": "vitexpress-ru", "name": "Vitexpress.ru / СтритТорг", "kind": "carrier", "url": "https://vitexpress.ru/", "bookingUrl": "https://vitexpress.ru/onlajn-bronirovanie", "adapter": "availability", "enabled": true, "note": "Юридически отдельный международный перевозчик; не смешивается с ООО ВитЭкспресс" },
-  { "id": "busnavi", "name": "БусНави", "kind": "carrier", "url": "https://busnavi.by/", "bookingUrl": "https://busnavi.by/", "adapter": "availability", "enabled": true, "note": "BusPro company 11 сейчас не публикует маршрут Могилёв—Минск" },
-  { "id": "grandexpress", "name": "ГрандЭкспресс", "kind": "carrier", "url": "https://grandexpress.by/", "bookingUrl": "https://grandexpress.by/#reservation-form-v2", "adapter": "buspro", "enabled": true, "note": "BusPro company 8" },
-  { "id": "grandexpress-vash", "name": "Ваш Экспресс", "kind": "carrier", "url": "https://vash-exspress.by/", "bookingUrl": "https://grandexpress.by/#reservation-form-v2", "adapter": "availability", "enabled": true, "note": "Зеркало ГрандЭкспресс; не создаёт дубли рейсов" },
-  { "id": "grandexpress-hutki", "name": "HutkiBus", "kind": "carrier", "url": "https://hutkibus.by/", "bookingUrl": "https://grandexpress.by/#reservation-form-v2", "adapter": "availability", "enabled": true, "note": "Зеркало ГрандЭкспресс; не создаёт дубли рейсов" },
-  { "id": "new-line", "name": "Новая Линия", "kind": "carrier", "url": "https://7777040.by/", "bookingUrl": "https://7777040.by/#reservation-form-v2", "adapter": "buspro", "enabled": true, "note": "BusPro company 51" },
-  { "id": "smilebus", "name": "Смайлбус", "kind": "carrier", "url": "https://smilebus.by/", "bookingUrl": "https://smilebus.by/", "adapter": "availability", "enabled": true, "note": "618.by перенаправляет на smilebus.by; в API нет маршрута Могилёв—Минск" },
-  { "id": "ap1-mogilev", "name": "Автобусный парк №1 Могилёва", "kind": "carrier", "url": "https://ap1mogilev.by/", "bookingUrl": "https://ticketbus.by/", "adapter": "availability", "enabled": true, "note": "Официальный сайт филиала; продажа междугородних билетов через TicketBus" },
-  { "id": "mogobltrans", "name": "Могилевоблавтотранс", "kind": "carrier", "url": "https://mogobltrans.by/", "bookingUrl": "https://ticketbus.by/", "adapter": "availability", "enabled": true },
-  { "id": "autosevlad", "name": "АвтоСевлад", "kind": "carrier", "url": "https://на-вильнюс.бел/", "bookingUrl": "https://на-вильнюс.бел/", "adapter": "availability", "enabled": true, "note": "Проходящий международный рейс" },
-  { "id": "infobus", "name": "INFOBUS", "kind": "platform", "url": "https://infobus.by/", "bookingUrl": "https://infobus.by/bus/route/from-mogilev-to-minsk", "adapter": "availability", "enabled": true, "note": "Маршрутные страницы есть; открытый API не обнаружен" },
-  { "id": "ticketbus", "name": "TicketBus", "kind": "platform", "url": "https://ticketbus.by/", "bookingUrl": "https://ticketbus.by/", "adapter": "availability", "enabled": true, "note": "Официальная билетная система автовокзалов" },
-  { "id": "tutu", "name": "Tutu", "kind": "platform", "url": "https://by.tutu.travel/", "bookingUrl": "https://by.tutu.travel/", "adapter": "availability", "enabled": true },
-  { "id": "yandex-schedules", "name": "Яндекс Расписания", "kind": "platform", "url": "https://yandex.by/maps/", "bookingUrl": "https://yandex.by/maps/", "adapter": "availability", "enabled": true },
-  { "id": "visit-tour", "name": "Визит-Тур", "kind": "carrier", "url": "https://vt.by/", "bookingUrl": "https://vt.by/", "adapter": "availability", "enabled": true, "note": "Проходящие рейсы; публичная сегментная HTML-выдача нестабильна и пока используется только для мониторинга" },
-  { "id": "two-capitals", "name": "Две столицы", "kind": "platform", "url": "https://2stolicy.com/", "bookingUrl": "https://2stolicy.com/", "adapter": "availability", "enabled": true, "note": "Диспетчерский бренд, возможны совпадения с Минск Экспресс" },
-  { "id": "new-line-7311", "name": "7311 / Новая линия", "kind": "platform", "url": "https://7311.by/", "bookingUrl": "https://7777040.by/", "adapter": "availability", "enabled": true, "note": "Сайт временно недоступен; рейсы импортируются напрямую из BusPro" },
-  { "id": "konduktor", "name": "Konduktor", "kind": "platform", "url": "https://konduktor.by/", "bookingUrl": "https://konduktor.by/", "adapter": "availability", "enabled": true },
-  { "id": "mogilev-bus-station", "name": "Автовокзал Могилёва", "kind": "platform", "url": "https://avtovokzal-mogilev.by/", "bookingUrl": "https://ticketbus.by/", "adapter": "availability", "enabled": true, "note": "Официальное расписание и переход на TicketBus" },
-  { "id": "intercars", "name": "Intercars Europe", "kind": "carrier", "url": "https://www.intercars-tickets.com/", "bookingUrl": "https://www.intercars-tickets.com/", "adapter": "availability", "enabled": true },
-  { "id": "ecolines", "name": "Ecolines", "kind": "carrier", "url": "https://ecolines.by/by/ru", "bookingUrl": "https://ecolines.by/by/ru/booking-search", "adapter": "availability", "enabled": true },
-  { "id": "bzd", "name": "БЖД", "kind": "carrier", "url": "https://pass.rw.by/ru/", "bookingUrl": "https://pass.rw.by/ru/", "adapter": "bzd-html", "enabled": true, "note": "Официальная страница поиска и покупки билетов" }
+  {
+    "id": "atlas",
+    "name": "Atlas",
+    "kind": "platform",
+    "url": "https://atlasbus.by/",
+    "bookingUrl": "https://atlasbus.by/Маршруты/Могилёв/Минск",
+    "adapter": "atlas",
+    "enabled": true,
+    "note": "Публичная выдача агрегатора; партнёр показывается только если он однозначно указан"
+  },
+  {
+    "id": "avtoslava",
+    "name": "АвтоСлава",
+    "kind": "carrier",
+    "url": "https://avto-slava.by/",
+    "bookingUrl": "https://avto-slava.by/",
+    "adapter": "transporter-api",
+    "enabled": true
+  },
+  {
+    "id": "minsk-express",
+    "name": "Минск Экспресс",
+    "kind": "carrier",
+    "url": "https://mogilevminsk.by/",
+    "bookingUrl": "https://mogilevminsk.by/",
+    "adapter": "transporter-api",
+    "enabled": true
+  },
+  {
+    "id": "vitexpress",
+    "name": "ВитЭкспресс",
+    "kind": "carrier",
+    "url": "https://vitexpress.by/",
+    "bookingUrl": "https://vitexpress.by/online-bron",
+    "adapter": "transporter-api",
+    "enabled": true,
+    "note": "Официальный DriveProf API, города Могилёв 15 и Минск 18",
+    "apiUrl": "https://vitexpress.driveprof.com",
+    "cityIds": {
+      "mogilev": 15,
+      "minsk": 18
+    }
+  },
+  {
+    "id": "vitexpress-ru",
+    "name": "Vitexpress.ru / СтритТорг",
+    "kind": "carrier",
+    "url": "https://vitexpress.ru/",
+    "bookingUrl": "https://vitexpress.ru/onlajn-bronirovanie",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Юридически отдельный международный перевозчик; не смешивается с ООО ВитЭкспресс"
+  },
+  {
+    "id": "busnavi",
+    "name": "БусНави",
+    "kind": "carrier",
+    "url": "https://busnavi.by/",
+    "bookingUrl": "https://busnavi.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. BusPro company 11 сейчас не публикует маршрут Могилёв—Минск"
+  },
+  {
+    "id": "grandexpress",
+    "name": "ГрандЭкспресс",
+    "kind": "carrier",
+    "url": "https://grandexpress.by/",
+    "bookingUrl": "https://grandexpress.by/#reservation-form-v2",
+    "adapter": "buspro",
+    "enabled": true,
+    "note": "BusPro company 8",
+    "companyId": 8
+  },
+  {
+    "id": "grandexpress-vash",
+    "name": "Ваш Экспресс",
+    "kind": "carrier",
+    "url": "https://vash-exspress.by/",
+    "bookingUrl": "https://grandexpress.by/#reservation-form-v2",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Зеркало ГрандЭкспресс; не создаёт дубли рейсов"
+  },
+  {
+    "id": "grandexpress-hutki",
+    "name": "HutkiBus",
+    "kind": "carrier",
+    "url": "https://hutkibus.by/",
+    "bookingUrl": "https://grandexpress.by/#reservation-form-v2",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Зеркало ГрандЭкспресс; не создаёт дубли рейсов"
+  },
+  {
+    "id": "new-line",
+    "name": "Новая Линия",
+    "kind": "carrier",
+    "url": "https://7777040.by/",
+    "bookingUrl": "https://7777040.by/#reservation-form-v2",
+    "adapter": "buspro",
+    "enabled": true,
+    "note": "BusPro company 51",
+    "companyId": 51
+  },
+  {
+    "id": "smilebus",
+    "name": "Смайлбус",
+    "kind": "carrier",
+    "url": "https://smilebus.by/",
+    "bookingUrl": "https://smilebus.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. 618.by перенаправляет на smilebus.by; в API нет маршрута Могилёв—Минск"
+  },
+  {
+    "id": "ap1-mogilev",
+    "name": "Автобусный парк №1 Могилёва",
+    "kind": "carrier",
+    "url": "https://ap1mogilev.by/",
+    "bookingUrl": "https://ticketbus.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Официальный сайт филиала; продажа междугородних билетов через TicketBus"
+  },
+  {
+    "id": "mogobltrans",
+    "name": "Могилевоблавтотранс",
+    "kind": "carrier",
+    "url": "https://mogobltrans.by/",
+    "bookingUrl": "https://ticketbus.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. "
+  },
+  {
+    "id": "autosevlad",
+    "name": "АвтоСевлад",
+    "kind": "carrier",
+    "url": "https://на-вильнюс.бел/",
+    "bookingUrl": "https://на-вильнюс.бел/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Проходящий международный рейс"
+  },
+  {
+    "id": "infobus",
+    "name": "INFOBUS",
+    "kind": "platform",
+    "url": "https://infobus.by/",
+    "bookingUrl": "https://infobus.by/bus/route/from-mogilev-to-minsk",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Маршрутные страницы есть; открытый API не обнаружен"
+  },
+  {
+    "id": "ticketbus",
+    "name": "TicketBus",
+    "kind": "platform",
+    "url": "https://ticketbus.by/",
+    "bookingUrl": "https://ticketbus.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Официальная билетная система автовокзалов"
+  },
+  {
+    "id": "tutu",
+    "name": "Tutu",
+    "kind": "platform",
+    "url": "https://by.tutu.travel/",
+    "bookingUrl": "https://by.tutu.travel/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. "
+  },
+  {
+    "id": "yandex-schedules",
+    "name": "Яндекс Расписания",
+    "kind": "platform",
+    "url": "https://yandex.by/maps/",
+    "bookingUrl": "https://yandex.by/maps/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. "
+  },
+  {
+    "id": "visit-tour",
+    "name": "Визит-Тур",
+    "kind": "carrier",
+    "url": "https://vt.by/",
+    "bookingUrl": "https://vt.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Проходящие рейсы; публичная сегментная HTML-выдача нестабильна и пока используется только для мониторинга"
+  },
+  {
+    "id": "two-capitals",
+    "name": "Две столицы",
+    "kind": "platform",
+    "url": "https://2stolicy.com/",
+    "bookingUrl": "https://2stolicy.com/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Диспетчерский бренд, возможны совпадения с Минск Экспресс"
+  },
+  {
+    "id": "new-line-7311",
+    "name": "7311 / Новая линия",
+    "kind": "platform",
+    "url": "https://7311.by/",
+    "bookingUrl": "https://7777040.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Сайт временно недоступен; рейсы импортируются напрямую из BusPro"
+  },
+  {
+    "id": "konduktor",
+    "name": "Konduktor",
+    "kind": "platform",
+    "url": "https://konduktor.by/",
+    "bookingUrl": "https://konduktor.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. "
+  },
+  {
+    "id": "mogilev-bus-station",
+    "name": "Автовокзал Могилёва",
+    "kind": "platform",
+    "url": "https://avtovokzal-mogilev.by/",
+    "bookingUrl": "https://ticketbus.by/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. Официальное расписание и переход на TicketBus"
+  },
+  {
+    "id": "intercars",
+    "name": "Intercars Europe",
+    "kind": "carrier",
+    "url": "https://www.intercars-tickets.com/",
+    "bookingUrl": "https://www.intercars-tickets.com/",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. "
+  },
+  {
+    "id": "ecolines",
+    "name": "Ecolines",
+    "kind": "carrier",
+    "url": "https://ecolines.by/by/ru",
+    "bookingUrl": "https://ecolines.by/by/ru/booking-search",
+    "adapter": "link-only",
+    "enabled": true,
+    "note": "Расписание не импортируется; требуется проверка маршрута и разрешённого источника. "
+  },
+  {
+    "id": "bzd",
+    "name": "БЖД",
+    "kind": "carrier",
+    "url": "https://pass.rw.by/ru/",
+    "bookingUrl": "https://pass.rw.by/ru/",
+    "adapter": "bzd-html",
+    "enabled": true,
+    "note": "Официальная страница поиска и покупки билетов"
+  }
 ]

@@ -1,6 +1,7 @@
-import { handleTripsRequest } from '../functions/api/_service'
+import { handleProtectedTrips } from '../functions/api/_service'
+import { handleSessionRequest, type AuthEnv } from '../functions/api/_auth'
 
-interface Env {
+interface Env extends AuthEnv {
   ASSETS: Fetcher
   TRIPS_KV: KVNamespace
 }
@@ -8,7 +9,8 @@ interface Env {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    if (url.pathname === '/api/trips') return handleTripsRequest(request, env.TRIPS_KV)
+    if (url.pathname === '/api/trips') return handleProtectedTrips(request, env)
+    if (url.pathname === '/api/session') return handleSessionRequest(request, env)
     if (url.pathname.startsWith('/api/')) {
       return new Response(JSON.stringify({ error: 'Метод API не найден' }), {
         status: 404,

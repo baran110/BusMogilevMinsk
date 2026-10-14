@@ -177,3 +177,4 @@ footer { padding: 30px 0; background: #0f2d25; color: rgba(255,255,255,.6); }.fo
 }
 
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important} }
+ .observation-note { margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: #526176; }

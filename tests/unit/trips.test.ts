@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDemoTrips } from '../../src/data/demo'
+import { buildDemoTrips } from '../fixtures/demo'
 import { chooseBestBooking, mergeExactTrips, normalizeCarrier, vehicleTypeFromName } from '../../src/lib/trips'
 
 describe('trip normalization', () => {

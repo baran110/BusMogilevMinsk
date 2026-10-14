@@ -1,7 +1,9 @@
 import { addDays, addMinutes, localDate, minskIso } from '../../src/lib/date'
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
 import { fetchWithTimeout } from '../lib/fetch'
-import { errorResult, type SourceResult } from '../lib/source'
+import type { SourceResult } from '../lib/source'
+import { collectPairs, requestedPairs } from '../lib/coverage'
+import { arrivalFromClock, knownNumber, validatedDeparture } from '../lib/normalize'
 
 const sourceUrl = 'https://pass.rw.by/ru/'
 
@@ -21,10 +23,10 @@ function capture(block: string, pattern: RegExp): string {
   return decodeText(block.match(pattern)?.[1] || '')
 }
 
-function parseDuration(value: string): number {
+function parseDuration(value: string): number | null {
   const hours = Number(value.match(/(\d+)\s*ч/u)?.[1] || 0)
   const minutes = Number(value.match(/(\d+)\s*мин/u)?.[1] || 0)
-  return hours * 60 + minutes || 180
+  return hours * 60 + minutes || null
 }
 
 function trainName(type: string): string {
@@ -58,11 +60,12 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
     const href = capture(block, /<a\s+href="([^"]+)"\s+class="sch-table__route"/i)
     if (!trainNumber || !departure || !arrival || !originStop || !destinationStop) return []
 
-    const sellingAllowed = capture(block, /data-ticket_selling_allowed="([^"]+)"/i) === 'true'
-    const price = Math.max(0, Number(capture(block, /sch-table__tickets"[^>]*data-value="([^"]+)"/i).replace(',', '.')) || 0)
-    const availability: AvailabilityStatus = sellingAllowed ? 'available' : 'sold_out'
-    const durationMinutes = parseDuration(durationText)
-    const departureAt = minskIso(serviceDate, departure)
+    const price = knownNumber(capture(block, /sch-table__tickets"[^>]*data-value="([^"]+)"/i))
+    // Ticket selling being enabled says nothing about remaining seats.
+    const availability: AvailabilityStatus = /нет мест/iu.test(decodeText(block)) ? 'sold_out' : 'unknown'
+    const departureAt = validatedDeparture(serviceDate, departure)
+    const arrivalAt = arrivalFromClock(serviceDate, departureAt, arrival)
+    const durationMinutes = parseDuration(durationText) ?? (arrivalAt ? (Date.parse(arrivalAt) - Date.parse(departureAt)) / 60000 : null)
     const bookingUrl = href ? new URL(href, sourceUrl).toString() : bzdRouteUrl(direction, serviceDate)
 
     return [{
@@ -70,7 +73,7 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
       direction,
       serviceDate,
       departureAt,
-      arrivalAt: addMinutes(departureAt, durationMinutes),
+      arrivalAt,
       durationMinutes,
       carrierId: 'belorusskaya-zheleznaya-doroga',
       carrierName: 'Белорусская железная дорога',
@@ -90,49 +93,24 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
         price,
         currency: 'BYN',
         availability,
+        observedAt: seenAt,
+        priceObservedAt: price === null ? undefined : seenAt,
+        availabilityObservedAt: availability === 'unknown' ? undefined : seenAt,
       }],
       lastSeenAt: seenAt,
     }]
   })
 }
 
-async function mapConcurrent<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length)
-  let cursor = 0
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      results[index] = await task(items[index])
-    }
-  }))
-  return results
-}
-
 export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
-  const checkedAt = new Date().toISOString()
-  try {
-    const today = localDate()
-    const requests = Array.from({ length: horizonDays }, (_, day) => (['mogilev-minsk', 'minsk-mogilev'] as const).map((direction) => ({ direction, date: addDays(today, day) }))).flat()
-    const batches = await mapConcurrent(requests, 5, async ({ direction, date }) => {
-      const response = await fetchWithTimeout(bzdRouteUrl(direction, date), {}, 35_000)
-      return parseBzdHtml(await response.text(), direction, date, checkedAt)
-    })
-    const trips = batches.flat()
-    return {
-      trips,
-      health: {
-        id: 'bzd',
-        name: 'БЖД',
-        kind: 'carrier',
-        url: sourceUrl,
-        status: 'ok',
-        checkedAt,
-        lastSuccessAt: checkedAt,
-        tripsFound: trips.length,
-      },
-    }
-  } catch (error) {
-    return errorResult('bzd', 'БЖД', 'carrier', sourceUrl, error)
-  }
+  return collectPairs({ id: 'bzd', name: 'БЖД', kind: 'carrier', url: sourceUrl }, requestedPairs(horizonDays), async (direction, date) => {
+    const response = await fetchWithTimeout(bzdRouteUrl(direction, date))
+    const html = await response.text()
+    const trips = parseBzdHtml(html, direction, date, new Date().toISOString())
+    if (!trips.length && !/поезда не найдены|поездов не найдено|нет поездов/iu.test(decodeText(html))) throw new Error('БЖД: выдача не распознана; это не подтверждение отсутствия поездов')
+    const from = direction === 'mogilev-minsk' ? /могил[её]в/iu : /минск/iu
+    const to = direction === 'mogilev-minsk' ? /минск/iu : /могил[её]в/iu
+    if (trips.some((trip) => !from.test(trip.originStop) || !to.test(trip.destinationStop))) throw new Error('БЖД вернула другое направление')
+    return trips
+  })
 }

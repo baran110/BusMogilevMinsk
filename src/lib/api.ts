@@ -1,14 +1,25 @@
-import { demoResponse } from '../data/demo'
+import { isTripsResponse } from './validation'
 import type { Direction, TripsResponse } from '../types'
 
-export async function fetchTrips(direction: Direction, date: string, signal?: AbortSignal): Promise<{ data: TripsResponse; demo: boolean }> {
+export class ApiError extends Error {
+  constructor(message: string, public readonly status = 0) { super(message); this.name = 'ApiError' }
+}
+
+export async function fetchTrips(direction: Direction, date: string, signal?: AbortSignal): Promise<TripsResponse> {
+  let response: Response
   try {
-    const response = await fetch(`/api/trips?direction=${direction}&date=${date}`, { signal })
-    if (!response.ok) throw new Error(`API ${response.status}`)
-    const data = await response.json() as TripsResponse
-    return { data, demo: false }
+    response = await fetch(`/api/trips?${new URLSearchParams({ direction, date })}`, { signal, credentials: 'same-origin', cache: 'no-store' })
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
-    return { data: demoResponse(direction, date), demo: true }
+    if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw error
+    throw new ApiError('Не удалось связаться с сервисом. Проверьте подключение и повторите поиск.')
   }
+  if (!response.ok) {
+    const message = response.status === 401 ? 'Срок входа истёк. Введите ключ ещё раз.'
+      : response.status === 400 ? 'Проверьте направление и дату поездки.'
+      : 'Подтверждённое расписание сейчас недоступно. Повторите поиск позже.'
+    throw new ApiError(message, response.status)
+  }
+  const data: unknown = await response.json().catch(() => null)
+  if (!isTripsResponse(data, direction, date)) throw new ApiError('Сервис вернул некорректные данные. Повторите поиск позже.', 502)
+  return data
 }

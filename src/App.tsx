@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { fetchTrips } from './lib/api'
-import { ACCESS_STORAGE_KEY, hashAccessKey, isAccessHash } from './lib/access'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ApiError, fetchTrips } from './lib/api'
+import { changeSession, checkSession } from './lib/access'
 import {
   addDays,
   dateRange,
@@ -151,7 +151,7 @@ function FilterPanel({ filters, setFilters, trips, mobile, close }: {
 function TripCard({ trip, cheapest }: { trip: Trip; cheapest: boolean }) {
   const best = chooseBestBooking(trip.bookingOptions)
   const soldOut = trip.availability === 'sold_out'
-  const vehicleLabel = trip.vehicleType === 'train' ? 'Поезд' : trip.vehicleType === 'bus' ? 'Автобус' : 'Маршрутка'
+  const vehicleLabel = trip.vehicleType === 'train' ? 'Поезд' : trip.vehicleType === 'bus' ? 'Автобус' : trip.vehicleType === 'minibus' ? 'Маршрутка' : 'Тип транспорта не указан'
   return (
     <article className={`trip-card ${soldOut ? 'sold-out' : ''}`}>
       <div className="trip-card-top">
@@ -159,31 +159,32 @@ function TripCard({ trip, cheapest }: { trip: Trip; cheapest: boolean }) {
         <div className="carrier-info"><span>{vehicleLabel}</span><strong>{trip.carrierName}</strong></div>
         <div className="trip-badges">
           {cheapest && !soldOut && <span className="badge best">Лучшая цена</span>}
-          <span className={`badge ${soldOut ? 'muted' : 'available'}`}>{soldOut ? 'Нет мест' : trip.seats ? `${trip.seats} ${trip.seats === 1 ? 'место' : trip.seats < 5 ? 'места' : 'мест'}` : 'Места есть'}</span>
+          <span className={`badge ${trip.availability === 'available' ? 'available' : 'muted'}`}>{soldOut ? 'Нет мест' : trip.availability === 'unknown' ? 'Наличие мест неизвестно' : trip.seats ? `${trip.seats} ${trip.seats === 1 ? 'место' : trip.seats < 5 ? 'места' : 'мест'}` : 'Места подтверждены'}</span>
         </div>
       </div>
       <div className="trip-main">
         <div className="timeline">
           <div className="time-point"><strong>{formatTime(trip.departureAt)}</strong><span>{trip.originStop}</span></div>
           <div className="route-line"><i></i><div><Icon name="clock" size={15} /> {formatDuration(trip.durationMinutes)}</div><i></i></div>
-          <div className="time-point end"><strong>{formatTime(trip.arrivalAt)}</strong><span>{trip.destinationStop}</span></div>
+          <div className="time-point end"><strong>{trip.arrivalAt ? formatTime(trip.arrivalAt) : 'Уточнить'}</strong><span>{trip.destinationStop}</span></div>
         </div>
         <div className="price-box">
           <span>за 1 пассажира</span>
-          <strong>{trip.price > 0 ? <>{trip.price.toFixed(trip.price % 1 ? 2 : 0)} <small>BYN</small></> : 'Уточнить'}</strong>
+          <strong>{trip.price !== null ? <>{trip.price.toFixed(trip.price % 1 ? 2 : 0)} <small>BYN</small></> : 'Уточнить'}</strong>
         </div>
       </div>
       <div className="trip-card-bottom">
         <div className="vehicle"><Icon name={trip.vehicleType === 'train' ? 'train' : 'bus'} size={17} /><span>{trip.vehicleName || 'Транспорт перевозчика'}{trip.vehicleType === 'train' && trip.routeNumber ? ` · № ${trip.routeNumber}` : ''}{trip.vehicleNumber ? ` · ${trip.vehicleNumber}` : ''}</span></div>
         <div className="source-label">Данные: <strong>{best.sourceName}</strong></div>
         <a className={`booking-button ${soldOut ? 'secondary' : ''}`} href={best.url} target="_blank" rel="noopener noreferrer">
-          {soldOut ? 'Проверить на сайте' : 'Перейти к бронированию'} <Icon name="arrow" size={17} />
+          {trip.availability !== 'available' ? 'Проверить на сайте' : 'Перейти к бронированию'} <Icon name="arrow" size={17} />
         </a>
       </div>
+      <p className="observation-note">{trip.lastKnown ? 'Последнее известное расписание' : 'Расписание проверено'}: {formatUpdated(trip.lastSeenAt)} (Минск).{best.priceObservedAt && best.price !== null ? ` Цена проверена: ${formatUpdated(best.priceObservedAt)}.` : ' Актуальную цену уточните у продавца.'}</p>
       {trip.bookingOptions.length > 1 && (
         <details className="alternatives">
           <summary>Ещё {trip.bookingOptions.length - 1} {trip.bookingOptions.length === 2 ? 'вариант бронирования' : 'варианта бронирования'}</summary>
-          <div>{trip.bookingOptions.filter((option) => option !== best).map((option) => <a key={`${option.sourceId}-${option.url}`} href={option.url} target="_blank" rel="noopener noreferrer">{option.sourceName}<span>{option.price} BYN</span></a>)}</div>
+          <div>{trip.bookingOptions.filter((option) => option !== best).map((option) => <a key={`${option.sourceId}-${option.url}`} href={option.url} target="_blank" rel="noopener noreferrer">{option.sourceName}<span>{option.price === null ? 'Цена неизвестна' : `${option.price} BYN`}{option.lastKnown ? ' · Последние данные' : ''}</span></a>)}</div>
         </details>
       )}
     </article>
@@ -206,28 +207,27 @@ function SourcesPanel({ sources, close }: { sources: SourceHealth[]; close: () =
             </a>
           ))}
         </div>
-        <div className="source-note">Источники старше 24 часов автоматически исключаются из выдачи. Мы не оформляем билеты и не принимаем оплату.</div>
+        <div className="source-note">Цена и места подтверждаются не дольше 15 минут. Последнее известное расписание может показываться до 7 дней с отметкой его возраста. Проверяйте итоговые условия у продавца.</div>
       </section>
     </div>
   )
 }
 
-function AccessGate({ onGranted }: { onGranted: (hash: string) => void }) {
+function AccessGate({ onGranted, initialError }: { onGranted: () => void; initialError?: string }) {
   const [key, setKey] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError || '')
   const [checking, setChecking] = useState(false)
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setChecking(true)
-    const hash = await hashAccessKey(key)
-    if (isAccessHash(hash)) {
-      try { localStorage.setItem(ACCESS_STORAGE_KEY, hash) } catch { /* Storage can be disabled. */ }
-      onGranted(hash)
-      return
-    }
-    setError('Неверный ключ доступа. Проверьте символы и попробуйте ещё раз.')
-    setChecking(false)
+    try {
+      await changeSession('POST', key)
+      setKey('')
+      onGranted()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Не удалось связаться с сервисом.')
+    } finally { setChecking(false) }
   }
 
   return (
@@ -236,10 +236,10 @@ function AccessGate({ onGranted }: { onGranted: (hash: string) => void }) {
         <div className="access-brand"><span className="brand-icon"><Icon name="bus" size={28} /></span><span><strong>ММ</strong><small>маршрутки</small></span></div>
         <span className="eyebrow">Закрытый доступ</span>
         <h1 id="access-title">Вход на сайт</h1>
-        <p>Введите один из выданных ключей. После успешного входа ключ сохранится в этом браузере.</p>
+        <p>Введите личный ключ. Вход действует 7 дней в этом браузере.</p>
         <form onSubmit={submit}>
           <label htmlFor="access-key">Ключ доступа</label>
-          <input id="access-key" name="access-key" autoComplete="current-password" autoCapitalize="characters" spellCheck={false} value={key} onChange={(event) => { setKey(event.target.value); setError('') }} placeholder="MM-XXXXX-XXXXX-XXXXX-XXXXX" required autoFocus />
+          <input id="access-key" name="access-key" type="password" autoComplete="current-password" autoCapitalize="none" spellCheck={false} value={key} onChange={(event) => { setKey(event.target.value); setError('') }} placeholder="Ваш личный ключ" required autoFocus />
           {error && <div className="access-error" role="alert">{error}</div>}
           <button className="primary" type="submit" disabled={checking}>{checking ? 'Проверяем…' : 'Войти'}</button>
         </form>
@@ -248,14 +248,14 @@ function AccessGate({ onGranted }: { onGranted: (hash: string) => void }) {
   )
 }
 
-function TripsApp({ onLogout }: { onLogout: () => void }) {
+function TripsApp({ onLogout, onExpired, logoutError }: { onLogout: () => void; onExpired: () => void; logoutError: string }) {
   const [direction, setDirection] = useState<Direction>('mogilev-minsk')
   const [selectedDate, setSelectedDate] = useState(localDate())
   const [filters, setFilters] = useState(initialFilters)
   const [sort, setSort] = useState<SortMode>('time')
   const [response, setResponse] = useState<TripsResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [demo, setDemo] = useState(false)
+  const [error, setError] = useState('')
   const [mobileFilters, setMobileFilters] = useState(false)
   const [showSources, setShowSources] = useState(false)
   const [clock, setClock] = useState(new Date())
@@ -265,13 +265,20 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    fetchTrips(direction, selectedDate, controller.signal).then(({ data, demo: isDemo }) => {
+    setError('')
+    setResponse(null)
+    fetchTrips(direction, selectedDate, controller.signal).then((data) => {
+      if (controller.signal.aborted) return
       setResponse(data)
-      setDemo(isDemo)
       setLoading(false)
-    }).catch(() => setLoading(false))
+    }).catch((error) => {
+      if (controller.signal.aborted) return
+      setLoading(false)
+      if (error instanceof ApiError && error.status === 401) { onExpired(); return }
+      setError(error instanceof Error ? error.message : 'Расписание временно недоступно.')
+    })
     return () => controller.abort()
-  }, [direction, selectedDate, refreshTick])
+  }, [direction, selectedDate, refreshTick, onExpired])
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 60_000)
@@ -281,7 +288,7 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     const refresh = () => setRefreshTick((value) => value + 1)
     const handleVisibility = () => { if (document.visibilityState === 'visible') refresh() }
-    const timer = window.setInterval(refresh, 5 * 60 * 1000)
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') refresh() }, 60_000)
     document.addEventListener('visibilitychange', handleVisibility)
     return () => {
       window.clearInterval(timer)
@@ -301,15 +308,16 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
       return !isDeparted(trip.departureAt, clock)
         && (filters.showSoldOut || trip.availability !== 'sold_out')
         && time >= filters.timeFrom && time <= filters.timeTo
-        && trip.price >= filters.priceMin && trip.price <= filters.priceMax
+        && (trip.price === null ? filters.priceMin === initialFilters.priceMin && filters.priceMax === initialFilters.priceMax : trip.price >= filters.priceMin && trip.price <= filters.priceMax)
         && (filters.carrier === 'all' || trip.carrierName === filters.carrier)
         && (filters.vehicle === 'all' || trip.vehicleType === filters.vehicle)
         && (filters.originStop === 'all' || trip.originStop === filters.originStop)
         && (filters.destinationStop === 'all' || trip.destinationStop === filters.destinationStop)
     })
-    return filtered.sort((a, b) => sort === 'price' ? a.price - b.price || a.departureAt.localeCompare(b.departureAt) : sort === 'duration' ? a.durationMinutes - b.durationMinutes : a.departureAt.localeCompare(b.departureAt))
+    return filtered.sort((a, b) => (sort === 'price' ? (a.price ?? Infinity) - (b.price ?? Infinity) : sort === 'duration' ? (a.durationMinutes ?? Infinity) - (b.durationMinutes ?? Infinity) : 0) || a.departureAt.localeCompare(b.departureAt))
   }, [trips, filters, sort, clock])
-  const minPrice = visibleTrips.length ? Math.min(...visibleTrips.filter((trip) => trip.availability !== 'sold_out').map((trip) => trip.price)) : 0
+  const prices = visibleTrips.filter((trip) => trip.availability !== 'sold_out' && trip.price !== null).map((trip) => trip.price as number)
+  const minPrice = prices.length ? Math.min(...prices) : null
 
   const swap = () => {
     setDirection(reverseDirection(direction))
@@ -321,14 +329,14 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="На главную"><span className="brand-icon"><Icon name="bus" size={25} /></span><span><strong>ММ</strong><small>маршрутки</small></span></a>
         <nav><a href="#trips">Рейсы</a><button onClick={() => setShowSources(true)}>Источники</button><a href="#about">О сервисе</a></nav>
-        <div className="header-actions"><div className="header-note"><span></span> Обновление каждый час в XX:05</div><button className="logout-button" onClick={onLogout}>Выйти</button></div>
+        <div className="header-actions"><div className="header-note"><span></span> Возраст данных указан у рейса</div><button className="logout-button" onClick={onLogout}>Выйти</button></div>
       </header>
 
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <span className="eyebrow light">Все перевозчики в одном месте</span>
-            <h1>Из Могилёва<br />в Минск <em>выгодно</em></h1>
+            <span className="eyebrow light">Проверенные источники расписаний</span>
+            <h1>Из {cities.from === 'Могилёв' ? 'Могилёва' : 'Минска'}<br />в {cities.to} <em>выгодно</em></h1>
             <p>Сравнивайте маршрутки, автобусы и поезда. Бронируйте напрямую у оператора.</p>
           </div>
           <div className="road-art" aria-hidden="true">
@@ -348,10 +356,11 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
 
         <section className="results-section" id="trips">
           <div className="content-width">
-            {demo && <div className="demo-banner"><strong>Демонстрационный режим.</strong> Подключите Workers KV, чтобы показывать данные, собранные каждый час.</div>}
-            {response?.stale && <div className="stale-banner">Обновление источников задерживается. Показан последний успешный снимок.</div>}
+            {logoutError && <div className="stale-banner" role="alert">{logoutError}</div>}
+            {response?.stale && <div className="stale-banner">Обновление задерживается. Возраст последнего известного расписания указан у каждого рейса; цена и места могут быть неизвестны.</div>}
+            {response?.partial && <div className="stale-banner">Часть источников недоступна. В выдаче могут отсутствовать предложения.</div>}
             <div className="results-heading">
-              <div><span className="eyebrow">{cities.from} → {cities.to}</span><h2>{loading ? 'Ищем рейсы…' : `${visibleTrips.length} ${visibleTrips.length % 10 === 1 && visibleTrips.length !== 11 ? 'рейс' : visibleTrips.length % 10 > 1 && visibleTrips.length % 10 < 5 ? 'рейса' : 'рейсов'}`}</h2><p>{response ? `Последнее обновление: ${formatUpdated(response.generatedAt)} (Минск)` : 'Получаем данные перевозчиков'}</p></div>
+              <div><span className="eyebrow">{cities.from} → {cities.to}</span><h2>{loading ? 'Ищем рейсы…' : error ? 'Расписание недоступно' : `${visibleTrips.length} ${visibleTrips.length % 10 === 1 && visibleTrips.length !== 11 ? 'рейс' : visibleTrips.length % 10 > 1 && visibleTrips.length % 10 < 5 ? 'рейса' : 'рейсов'}`}</h2><p>{response ? `Снимок сформирован: ${formatUpdated(response.generatedAt)} (Минск). Проверка рейса указана в карточке.` : loading ? 'Получаем данные перевозчиков' : 'Повторите запрос, чтобы проверить расписание'}</p></div>
               <div className="results-actions">
                 <button className="mobile-filter-button" onClick={() => setMobileFilters(true)}><Icon name="filter" /> Фильтры</button>
                 <label>Сначала <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="time">ранние</option><option value="price">дешёвые</option><option value="duration">быстрые</option></select></label>
@@ -360,8 +369,10 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
             <div className="results-layout">
               <FilterPanel filters={filters} setFilters={setFilters} trips={trips} />
               <div className="trip-list">
-                {loading ? Array.from({ length: 4 }, (_, index) => <div className="trip-skeleton" key={index}></div>) : visibleTrips.length ? visibleTrips.map((trip) => <TripCard key={trip.id} trip={trip} cheapest={trip.price === minPrice} />) : (
-                  <div className="empty-state"><div><Icon name="route" size={34} /></div><h3>Подходящих рейсов не найдено</h3><p>Попробуйте выбрать другую дату или сбросить фильтры.</p><button className="primary" onClick={() => setFilters(initialFilters)}>Сбросить фильтры</button></div>
+                {loading ? Array.from({ length: 4 }, (_, index) => <div className="trip-skeleton" key={index}></div>) : error ? (
+                  <div className="empty-state" role="alert"><h3>Не удалось получить расписание</h3><p>{error}</p><button className="primary" onClick={() => setRefreshTick((value) => value + 1)}>Повторить поиск</button></div>
+                ) : visibleTrips.length ? visibleTrips.map((trip) => <TripCard key={trip.id} trip={trip} cheapest={minPrice !== null && trip.price === minPrice} />) : (
+                  <div className="empty-state"><div><Icon name="route" size={34} /></div><h3>{trips.length ? 'Подходящих рейсов не найдено' : 'Источники не подтвердили будущие рейсы на эту дату'}</h3><p>{trips.length ? 'Попробуйте сбросить фильтры.' : 'Выберите другую дату или проверьте расписание у продавца.'}</p><button className="primary" onClick={() => setFilters(initialFilters)}>Сбросить фильтры</button></div>
                 )}
               </div>
             </div>
@@ -371,7 +382,7 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
         <section className="trust-section" id="about">
           <div className="content-width trust-grid">
             <div><span className="eyebrow light">Как это работает</span><h2>Мы сравниваем.<br />Вы выбираете.</h2></div>
-            <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Проверяем прямые сайты и официальные площадки каждый час.</p></div>
+            <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Для каждого предложения показываем источник и время фактической проверки.</p></div>
             <div className="trust-item"><span>02</span><strong>Убираем повторы</strong><p>Один физический рейс — одна карточка, даже если он продаётся в нескольких местах.</p></div>
             <div className="trust-item"><span>03</span><strong>Ведём к перевозчику</strong><p>Не принимаем оплату — вы завершаете бронирование на официальном сайте.</p></div>
           </div>
@@ -387,14 +398,24 @@ function TripsApp({ onLogout }: { onLogout: () => void }) {
 }
 
 export default function App() {
-  const [accessGranted, setAccessGranted] = useState(() => {
-    try { return isAccessHash(localStorage.getItem(ACCESS_STORAGE_KEY)) } catch { return false }
-  })
-
-  const logout = () => {
-    try { localStorage.removeItem(ACCESS_STORAGE_KEY) } catch { /* Storage can be disabled. */ }
-    setAccessGranted(false)
+  const [accessGranted, setAccessGranted] = useState(false)
+  const [checking, setChecking] = useState(true)
+  const [error, setError] = useState('')
+  const expired = useCallback(() => { setAccessGranted(false); setError('Срок входа истёк или ключ отозван. Введите действующий ключ.') }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    // Retire the old browser-only grant; it is never accepted by the API.
+    try { localStorage.removeItem('mm-access-grant-v1') } catch { /* Storage may be disabled. */ }
+    checkSession(controller.signal).then((valid) => { if (!controller.signal.aborted) setAccessGranted(valid) })
+      .catch(() => { if (!controller.signal.aborted) setError('Не удалось проверить вход. Проверьте подключение.') })
+      .finally(() => { if (!controller.signal.aborted) setChecking(false) })
+    return () => controller.abort()
+  }, [])
+  const logout = async () => {
+    try { await changeSession('DELETE'); setAccessGranted(false); setError('') }
+    catch { setError('Не удалось выйти. Повторите попытку, когда подключение восстановится.') }
   }
-
-  return accessGranted ? <TripsApp onLogout={logout} /> : <AccessGate onGranted={() => setAccessGranted(true)} />
+  if (checking) return <main className="access-screen"><p role="status">Проверяем вход…</p></main>
+  return accessGranted ? <TripsApp onLogout={logout} onExpired={expired} logoutError={error} />
+    : <AccessGate key={error} initialError={error} onGranted={() => { setAccessGranted(true); setError('') }} />
 }

@@ -3,6 +3,8 @@ import { slugify, vehicleTypeFromName } from '../../src/lib/trips'
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
 import { fetchWithTimeout } from '../lib/fetch'
 import { errorResult, type SourceResult } from '../lib/source'
+import { collectPairs, requestedPairs } from '../lib/coverage'
+import { knownNumber, knownSeats, seatsAvailability, validatedDeparture } from '../lib/normalize'
 
 export interface BusProConfig {
   id: string
@@ -51,11 +53,11 @@ function isoDate(value: string): string {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value.slice(0, 10)
 }
 
-function durationMinutes(value = '03:00'): number {
-  const match = value.match(/(\d{1,2}):(\d{2})/)
-  if (!match) return 180
+function durationMinutes(value = ''): number | null {
+  const match = value.match(/^(\d{1,2}):([0-5]\d)$/)
+  if (!match) return null
   const duration = Number(match[1]) * 60 + Number(match[2])
-  return duration >= 90 && duration <= 420 ? duration : 180
+  return duration > 0 && duration <= 1440 ? duration : null
 }
 
 function vehicleNumber(value = ''): string | undefined {
@@ -72,14 +74,14 @@ function displayStop(stops: BusProStop[] | null | undefined, time: string, city:
 export function normalizeBusProTrip(raw: BusProTrip, direction: Direction, config: BusProConfig, seenAt: string): Trip {
   const serviceDate = isoDate(raw.dateDeparture)
   const duration = durationMinutes(raw.travelTime)
-  const departureAt = minskIso(serviceDate, raw.timeDeparture)
-  const seats = Math.max(0, Number(raw.freePlaces || 0))
-  const available = Boolean(raw.availableForReservation) && seats > 0
-  const availability: AvailabilityStatus = available ? 'available' : 'sold_out'
-  const price = Math.max(0, Number(raw.price || 0))
+  const departureAt = validatedDeparture(serviceDate, raw.timeDeparture)
+  const seats = knownSeats(raw.freePlaces)
+  const canReserve = raw.availableForReservation === undefined ? undefined : raw.availableForReservation === true || raw.availableForReservation === 1
+  const availability: AvailabilityStatus = seatsAvailability(seats, canReserve)
+  const price = knownNumber(raw.price)
   const originCity = direction === 'mogilev-minsk' ? 'Могилёв' : 'Минск'
   const destinationCity = direction === 'mogilev-minsk' ? 'Минск' : 'Могилёв'
-  const vehicleName = raw.transport?.trim() || 'Микроавтобус перевозчика'
+  const vehicleName = raw.transport?.trim() || 'Транспорт перевозчика'
   const detectedVehicleType = vehicleTypeFromName(vehicleName)
   const bookingUrl = `${config.bookingUrl}${config.bookingUrl.includes('#') ? '' : '#reservation-form-v2'}`
 
@@ -88,11 +90,11 @@ export function normalizeBusProTrip(raw: BusProTrip, direction: Direction, confi
     direction,
     serviceDate,
     departureAt,
-    arrivalAt: addMinutes(departureAt, duration),
+    arrivalAt: duration === null ? null : addMinutes(departureAt, duration),
     durationMinutes: duration,
     carrierId: slugify(config.name),
     carrierName: config.name,
-    vehicleType: detectedVehicleType === 'unknown' ? 'minibus' : detectedVehicleType,
+    vehicleType: detectedVehicleType,
     vehicleName,
     vehicleNumber: vehicleNumber(vehicleName),
     routeNumber: raw.route,
@@ -111,65 +113,30 @@ export function normalizeBusProTrip(raw: BusProTrip, direction: Direction, confi
       currency: 'BYN',
       availability,
       seats,
+      observedAt: seenAt,
+      priceObservedAt: price === null ? undefined : seenAt,
+      availabilityObservedAt: availability === 'unknown' ? undefined : seenAt,
     }],
     lastSeenAt: seenAt,
   }
 }
 
-async function mapConcurrent<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length)
-  let cursor = 0
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      results[index] = await task(items[index])
-    }
-  }))
-  return results
-}
-
 export async function collectBusPro(config: BusProConfig, horizonDays = 30): Promise<SourceResult> {
-  const checkedAt = new Date().toISOString()
   try {
     const routesResponse = await fetchWithTimeout(`https://buspro.by/api/route?s%5Bcompany_id%5D=${config.companyId}`)
-    const routes = await routesResponse.json() as BusProRoute[]
-    const pairs = (['mogilev-minsk', 'minsk-mogilev'] as const).map((direction) => {
+    const routes: unknown = await routesResponse.json()
+    if (!Array.isArray(routes) || !routes.every((route) => typeof route.cityDeparture === 'string' && typeof route.cityDestination === 'string' && Number.isInteger(route.cityDepartureId) && Number.isInteger(route.cityDestinationId))) throw new Error('BusPro: формат маршрутов изменился')
+    return await collectPairs({ id: config.id, name: config.name, kind: 'carrier', url: config.bookingUrl }, requestedPairs(horizonDays), async (direction, date) => {
       const from = direction === 'mogilev-minsk' ? 'mogilev' : 'minsk'
       const to = direction === 'mogilev-minsk' ? 'minsk' : 'mogilev'
-      const route = routes.find((candidate) => cityMatches(candidate.cityDeparture, from) && cityMatches(candidate.cityDestination, to))
+      const route = (routes as BusProRoute[]).find((candidate) => cityMatches(candidate.cityDeparture, from) && cityMatches(candidate.cityDestination, to))
       if (!route) throw new Error(`В BusPro не найден маршрут ${direction}`)
-      return { direction, from: route.cityDepartureId, to: route.cityDestinationId }
-    })
-    const today = localDate()
-    const requests = Array.from({ length: horizonDays }, (_, day) => pairs.map((pair) => ({ ...pair, date: addDays(today, day) }))).flat()
-    const responses = await mapConcurrent(requests, 5, async ({ direction, from, to, date }) => {
-      const query = new URLSearchParams({
-        's[company_id]': String(config.companyId),
-        's[city_departure_id]': String(from),
-        's[city_destination_id]': String(to),
-        's[date_departure]': date,
-        actual: '1',
-      })
+      const query = new URLSearchParams({ 's[company_id]': String(config.companyId), 's[city_departure_id]': String(route.cityDepartureId), 's[city_destination_id]': String(route.cityDestinationId), 's[date_departure]': date, actual: '1' })
       const response = await fetchWithTimeout(`https://buspro.by/api/trip?${query}`)
-      const rawTrips = await response.json() as BusProTrip[]
-      return rawTrips.map((trip) => normalizeBusProTrip(trip, direction, config, checkedAt))
+      const rawTrips: unknown = await response.json()
+      if (!Array.isArray(rawTrips)) throw new Error('BusPro: формат рейсов изменился')
+      const seenAt = new Date().toISOString()
+      return (rawTrips as BusProTrip[]).map((trip) => normalizeBusProTrip(trip, direction, config, seenAt))
     })
-    const trips = responses.flat().filter((trip) => trip.serviceDate >= today && trip.serviceDate < addDays(today, horizonDays))
-    return {
-      trips,
-      health: {
-        id: config.id,
-        name: config.name,
-        kind: 'carrier',
-        url: config.bookingUrl,
-        status: 'ok',
-        checkedAt,
-        lastSuccessAt: checkedAt,
-        tripsFound: trips.length,
-      },
-    }
-  } catch (error) {
-    return errorResult(config.id, config.name, 'carrier', config.bookingUrl, error)
-  }
+  } catch (error) { return errorResult(config.id, config.name, 'carrier', config.bookingUrl, error) }
 }

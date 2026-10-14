@@ -1,4 +1,4 @@
-const CACHE = 'mm-static-v3'
+const CACHE = 'mm-static-v4'
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {
@@ -12,10 +12,14 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET' || new URL(event.request.url).pathname.startsWith('/api/')) return
+  const url = new URL(event.request.url)
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return
   event.respondWith(fetch(event.request).then((response) => {
+    if (!response.ok) return response
     const copy = response.clone()
-    caches.open(CACHE).then((cache) => cache.put(event.request, copy))
+    event.waitUntil(caches.open(CACHE).then((cache) => cache.put(event.request, copy)))
     return response
-  }).catch(() => caches.match(event.request).then((response) => response || caches.match('/'))))
+  }).catch(async () => (await caches.match(event.request))
+    || (event.request.mode === 'navigate' ? await caches.match('/') : undefined)
+    || new Response('Сеть недоступна', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })))
 })
