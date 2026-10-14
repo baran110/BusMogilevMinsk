@@ -3,7 +3,7 @@ name: Проверка БЖД и Atlas без публикации
 on:
   push:
     branches: [codex/restore-reliable-service]
-    paths: [.github/workflows/diagnose-sources.yml]
+    paths: [.github/workflows/diagnose-sources.yml, scripts/sources/atlas.ts, scripts/sources/bzd.ts]
   workflow_dispatch:
 
 permissions:

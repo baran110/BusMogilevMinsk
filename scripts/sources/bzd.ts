@@ -113,7 +113,8 @@ export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
       if (process.env.DEBUG_SOURCE_SCHEMA === '1') console.log(JSON.stringify({ bzdSchema: {
         title: decodeText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 120),
         challenge: /challenge-platform|__cf_chl|captcha|проверка.*робот/iu.test(html),
-        classes: [...new Set([...html.matchAll(/class="([^"]+)"/g)].map((match) => match[1]).filter((value) => /sch-|train|route|captcha/i.test(value)))].slice(0, 35),
+        classes: [...new Set([...html.matchAll(/class="([^"]+)"/g)].map((match) => match[1]).filter((value) => /sch-table|train-|no-result|empty|alert|captcha/i.test(value)))].slice(-35),
+        emptyMessages: decodeText(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')).match(/.{0,30}(?:не найден|нет поезд|не курсир|ничего не|не выполня).{0,100}/giu)?.slice(0, 5),
         dateInputs: [...html.matchAll(/<input[^>]+(?:name|id)="([^" ]*date[^" ]*)"/g)].map((match) => match[1]).slice(0, 10),
       } }))
       throw new Error('БЖД: выдача не распознана; это не подтверждение отсутствия поездов')

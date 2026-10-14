@@ -47,14 +47,27 @@ export function parseCard(text: string, direction: Direction, date: string, inde
   if (times.length < 2) return undefined
   const firstTime = lines.indexOf(times[0])
   const secondTime = lines.indexOf(times[1], firstTime + 1)
-  // A changed URL alone does not prove that the previous date's cards have finished updating.
-  if (dateFromCalendarLabel(lines[firstTime + 1] || '', date) !== date) return undefined
-  const originStop = lines[firstTime + 3] || (direction === 'mogilev-minsk' ? 'Могилёв' : 'Минск')
-  const destinationStop = lines[secondTime + 2] || (direction === 'mogilev-minsk' ? 'Минск' : 'Могилёв')
+  const departureDateLabel = dateFromCalendarLabel(lines[firstTime + 1] || '', date)
+  const arrivalDateLabel = dateFromCalendarLabel(lines[secondTime + 1] || '', date)
   const durationMatch = text.match(/В пути:\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
+  const statedDuration = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : null
+  // The current-day departure can omit its date. An explicit arrival date plus
+  // a stated journey shorter than a day still proves the departure day, including midnight crossings.
+  const provenDate = departureDateLabel ?? (arrivalDateLabel && statedDuration !== null && statedDuration > 0 && statedDuration < 1440
+    ? addDays(arrivalDateLabel, times[0] > times[1] ? -1 : 0) : undefined)
+  if (provenDate !== date) return undefined
+  const fromIndex = firstTime + (departureDateLabel ? 2 : 1)
+  const toIndex = secondTime + (arrivalDateLabel ? 2 : 1)
+  const fromCity = direction === 'mogilev-minsk' ? /могил[её]в/iu : /минск/iu
+  const toCity = direction === 'mogilev-minsk' ? /минск/iu : /могил[её]в/iu
+  if (!fromCity.test(lines[fromIndex] || '') || !toCity.test(lines[toIndex] || '')) return undefined
+  const originStop = lines[fromIndex + 1]
+  const destinationStop = lines[toIndex + 1]
+  if (!originStop || !destinationStop) return undefined
   const departureAt = validatedDeparture(date, times[0])
-  const arrivalAt = arrivalFromClock(date, departureAt, times[1])
-  const durationMinutes = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : arrivalAt ? (Date.parse(arrivalAt) - Date.parse(departureAt)) / 60000 : null
+  const arrivalAt = arrivalDateLabel ? validatedDeparture(arrivalDateLabel, times[1]) : arrivalFromClock(date, departureAt, times[1])
+  const durationMinutes = arrivalAt ? (Date.parse(arrivalAt) - Date.parse(departureAt)) / 60000 : statedDuration
+  if (durationMinutes !== null && (durationMinutes <= 0 || durationMinutes >= 1440)) return undefined
   const priceLine = lines.find((line) => /^\d+(?:[.,]\d+)?\s*[^A-Za-zА-Яа-я0-9]*$/u.test(line))
   const price = knownNumber(priceLine?.match(/^\d+(?:[.,]\d+)?/)?.[0])
   const soldOut = /нет мест/i.test(text)
