@@ -1,4 +1,3 @@
-import { addDays, addMinutes, localDate, minskIso } from '../../src/lib/date'
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
 import { fetchWithTimeout } from '../lib/fetch'
 import type { SourceResult } from '../lib/source'
@@ -47,8 +46,28 @@ export function bzdRouteUrl(direction: Direction, date: string): string {
   return `https://pass.rw.by/ru/route/?${query}`
 }
 
+function trainRows(html: string): string[] {
+  const rows: string[] = []
+  for (const match of html.matchAll(/<div\b[^>]*\bclass=["']([^"']*)["'][^>]*>/gi)) {
+    const classes = match[1].split(/\s+/)
+    if (!classes.includes('sch-table__row-wrap') || !classes.includes('js-row')) continue
+    // Class order and disabled departed rows vary. End at this wrapper's closing
+    // div so hidden footer messages cannot change a train's availability.
+    const tags = /<\/?div\b[^>]*>/gi
+    tags.lastIndex = match.index + match[0].length
+    let depth = 1
+    let tag: RegExpExecArray | null
+    while ((tag = tags.exec(html))) {
+      depth += /^<\//.test(tag[0]) ? -1 : 1
+      if (depth === 0) { rows.push(html.slice(match.index, tags.lastIndex)); break }
+    }
+    if (depth !== 0) throw new Error('БЖД: строка расписания повреждена')
+  }
+  return rows
+}
+
 export function parseBzdHtml(html: string, direction: Direction, serviceDate: string, seenAt: string): Trip[] {
-  return html.split('<div class="sch-table__row-wrap js-row').slice(1).flatMap((block): Trip[] => {
+  return trainRows(html).map((block): Trip => {
     const trainNumber = capture(block, /data-train-number="([^"]+)"/i)
     const trainId = capture(block, /data-train-id="([^"]+)"/i) || trainNumber
     const trainType = capture(block, /data-train-type="([^"]+)"/i)
@@ -58,9 +77,11 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
     const destinationStop = capture(block, /train-to-name"[^>]*>([^<]+)/i)
     const durationText = capture(block, /train-duration-time"[^>]*>\s*([^<]+)/i)
     const href = capture(block, /<a\s+href="([^"]+)"\s+class="sch-table__route"/i)
-    if (!trainNumber || !departure || !arrival || !originStop || !destinationStop) return []
+    if (!trainNumber || !departure || !arrival || !originStop || !destinationStop) throw new Error('БЖД: строка поезда не распознана полностью')
 
-    const price = knownNumber(capture(block, /sch-table__tickets"[^>]*data-value="([^"]+)"/i))
+    const ticketPrice = knownNumber(capture(block, /sch-table__tickets"[^>]*data-value="([^"]+)"/i))
+    // The official page uses zero as the sorting value of an empty ticket cell.
+    const price = ticketPrice !== null && ticketPrice > 0 ? ticketPrice : null
     // Ticket selling being enabled says nothing about remaining seats.
     const availability: AvailabilityStatus = /нет мест/iu.test(decodeText(block)) ? 'sold_out' : 'unknown'
     const departureAt = validatedDeparture(serviceDate, departure)
@@ -70,7 +91,7 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
     const linkedDate = new URL(bookingUrl).searchParams.get('date')
     if (!linkedDate || linkedDate !== serviceDate) throw new Error('БЖД: дата рейса в ссылке не совпадает с запросом')
 
-    return [{
+    return {
       id: `bzd:${serviceDate}:${trainId}`,
       direction,
       serviceDate,
@@ -100,7 +121,7 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
         availabilityObservedAt: availability === 'unknown' ? undefined : seenAt,
       }],
       lastSeenAt: seenAt,
-    }]
+    }
   })
 }
 
@@ -109,7 +130,9 @@ export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
     const response = await fetchWithTimeout(bzdRouteUrl(direction, date))
     const html = await response.text()
     const trips = parseBzdHtml(html, direction, date, new Date().toISOString())
-    if (!trips.length && !/поезда не найдены|поездов не найдено|нет поездов/iu.test(decodeText(html))) {
+    // Generic empty-message strings can also be hidden templates in a page that
+    // contains trains. Without recognised rows the result remains unconfirmed.
+    if (!trips.length) {
       if (process.env.DEBUG_SOURCE_SCHEMA === '1') console.log(JSON.stringify({ bzdSchema: {
         title: decodeText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 120),
         challenge: /challenge-platform|__cf_chl|captcha|проверка.*робот/iu.test(html),

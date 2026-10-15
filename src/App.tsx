@@ -192,7 +192,7 @@ function TripCard({ trip, cheapest }: { trip: Trip; cheapest: boolean }) {
 }
 
 function SourcesPanel({ sources, close }: { sources: SourceHealth[]; close: () => void }) {
-  const labels: Record<SourceHealth['status'], string> = { ok: 'Работает', stale: 'Задержка', error: 'Недоступен', unchecked: 'Проверяется' }
+  const labels: Record<SourceHealth['status'], string> = { ok: 'Проверен', stale: 'Частичный сбой', error: 'Недоступен', unchecked: 'Не подключён' }
   return (
     <div className="overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="sources-panel" role="dialog" aria-modal="true" aria-label="Источники данных">
@@ -386,7 +386,7 @@ function TripsApp({ onLogout, onExpired, logoutError }: { onLogout: () => void; 
           <div className="content-width trust-grid">
             <div><span className="eyebrow light">Как это работает</span><h2>Мы сравниваем.<br />Вы выбираете.</h2></div>
             <div className="trust-item"><span>01</span><strong>Собираем расписания</strong><p>Для каждого предложения показываем источник и время фактической проверки.</p></div>
-            <div className="trust-item"><span>02</span><strong>Убираем повторы</strong><p>Один физический рейс — одна карточка, даже если он продаётся в нескольких местах.</p></div>
+            <div className="trust-item"><span>02</span><strong>Убираем повторы</strong><p>Объединяем подтверждённые совпадения и сохраняем варианты покупки. Неоднозначные совпадения показываем отдельно.</p></div>
             <div className="trust-item"><span>03</span><strong>Ведём к перевозчику</strong><p>Не принимаем оплату — вы завершаете бронирование на официальном сайте.</p></div>
           </div>
         </section>

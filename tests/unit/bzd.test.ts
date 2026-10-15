@@ -34,4 +34,20 @@ describe('БЖД adapter', () => {
     expect(url.searchParams.get('from')).toBe('Минск')
     expect(url.searchParams.get('to')).toBe('Могилев')
   })
+
+  it('recognises departed rows and leaves empty ticket prices unknown', () => {
+    const departed = row.replace('sch-table__row-wrap js-row', 'js-row sch-table__row-wrap disabled')
+      .replace('data-ticket_selling_allowed="true"', 'data-ticket_selling_allowed="false"')
+      .replace('data-value="25.28"', 'data-value="0"')
+    const trips = parseBzdHtml(`${departed}<footer>нет мест</footer>`, 'mogilev-minsk', '2026-07-13', '2026-07-13T20:00:00Z')
+    expect(trips).toHaveLength(1)
+    expect(trips[0]).toMatchObject({ price: null, availability: 'unknown', departureAt: '2026-07-13T06:59:00+03:00' })
+    expect(trips[0].bookingOptions[0].priceObservedAt).toBeUndefined()
+  })
+
+  it('rejects partial rows instead of confirming an incomplete result', () => {
+    const broken = row.replace('train-from-time', 'changed-from-time')
+    expect(() => parseBzdHtml(row + broken, 'mogilev-minsk', '2026-07-13', '2026-07-12T12:00:00Z')).toThrow('не распознана полностью')
+    expect(() => parseBzdHtml(row.slice(0, -6), 'mogilev-minsk', '2026-07-13', '2026-07-12T12:00:00Z')).toThrow('повреждена')
+  })
 })
