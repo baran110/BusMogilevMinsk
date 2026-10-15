@@ -128,8 +128,8 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
   })
 }
 
-export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
-  return collectPairs({ id: 'bzd', name: 'БЖД', kind: 'carrier', url: sourceUrl }, requestedPairs(horizonDays), async (direction, date) => {
+export async function collectBzd(horizonDays = 30, pairs = requestedPairs(horizonDays), concurrency = 2): Promise<SourceResult> {
+  return collectPairs({ id: 'bzd', name: 'БЖД', kind: 'carrier', url: sourceUrl }, pairs, async (direction, date) => {
     const started = Date.now()
     // A measured successful official response took 17.8 s including TLS/body.
     // The shared 12 s default would discard it. The source deadline still bounds the whole cycle.
@@ -155,5 +155,5 @@ export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
     const to = direction === 'mogilev-minsk' ? /минск/iu : /могил[её]в/iu
     if (trips.some((trip) => !from.test(trip.originStop) || !to.test(trip.destinationStop))) throw new Error('БЖД вернула другое направление')
     return trips
-  })
+  }, concurrency)
 }

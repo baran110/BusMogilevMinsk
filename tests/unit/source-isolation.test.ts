@@ -24,5 +24,9 @@ describe('date failures preserve successful results and stop HTTP blocks', () =>
     expect(calls).toBeLessThanOrEqual(2)
     expect(result.trips).toHaveLength(0)
     expect(result.health.coverage).toHaveLength(8)
+    expect(result.halted).toBe(true)
+    calls = 0
+    await collectPairs(source, pairs, async () => { calls++; throw new HttpError(429) }, 1)
+    expect(calls).toBe(1)
   })
 })

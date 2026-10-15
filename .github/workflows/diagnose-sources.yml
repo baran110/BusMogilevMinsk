@@ -3,7 +3,7 @@ name: Проверка БЖД и Atlas без публикации
 on:
   push:
     branches: [codex/restore-reliable-service]
-    paths: [.github/workflows/diagnose-sources.yml, scripts/sources/atlas.ts, scripts/sources/bzd.ts]
+    paths: [.github/workflows/diagnose-sources.yml, scripts/sources/atlas.ts, scripts/sources/bzd.ts, scripts/collect-bzd.ts]
   workflow_dispatch:
 
 permissions:
@@ -28,8 +28,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Только три даты, без секретов и записи KV
+      - name: Ближний пакет БЖД — без секретов и записи KV
         env:
-          SOURCE_IDS: bzd,atlas
+          DEBUG_SOURCE_SCHEMA: '1'
+        run: node --import tsx scripts/collect-bzd.ts --local --near
+      - name: Atlas — только три даты, без секретов и записи KV
+        env:
+          SOURCE_IDS: atlas
           DEBUG_SOURCE_SCHEMA: '1'
         run: pnpm exec tsx scripts/collect.ts --local --near

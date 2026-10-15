@@ -18,6 +18,8 @@ export function buildSnapshots(results: SourceResult[], previous: Partial<Record
         const coverage = result?.health.coverage?.find((item) => item.direction === direction && item.date === trip.serviceDate)
         // Only a successful observation of this exact date replaces its old offers, including an empty result.
         if (coverage?.status === 'ok') return []
+        const confirmed = result?.confirmedCoverage?.find((item) => item.direction === direction && item.date === trip.serviceDate && item.status === 'ok')
+        if (confirmed && Date.parse(confirmed.checkedAt) >= Date.parse(observedAt)) return []
         if (!result || result.health.status === 'unchecked' || !coverage) {
           if (result?.health.status === 'ok' && !result.health.coverage) return []
           const failed = result?.health.status === 'error' || result?.health.status === 'stale'

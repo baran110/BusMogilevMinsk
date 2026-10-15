@@ -11,6 +11,10 @@ import { collectAtlas } from './sources/atlas'
 import { collectBusPro } from './sources/buspro'
 import { collectBzd } from './sources/bzd'
 import { collectTransporter } from './sources/transporter'
+import { bzdStageKey, readBzdStagedResult, saveBzdStage } from './lib/bzd-stage'
+import { collectBzdBatches } from './lib/bzd-collection'
+import { readKv } from './lib/kv'
+import { addDays, localDate } from '../src/lib/date'
 
 const localOnly = process.argv.includes('--local')
 const mode = process.argv.includes('--near') ? 'near' : 'full'
@@ -22,6 +26,29 @@ const results = (await Promise.all(entries.map((source): Promise<SourceResult> =
   if (!source.enabled || source.adapter === 'link-only' || source.adapter === 'availability') {
     return Promise.resolve({ trips: [], health: { id: source.id, name: source.name, kind: source.kind, url: source.url,
       status: 'unchecked', message: source.note || 'Расписание пока не подключено' } })
+  }
+  if (source.adapter === 'bzd-html' && !localOnly) {
+    // Runs alongside the other adapters; publication awaits this source too.
+    // Source cancellation ends before KV operations, so errors can still be saved.
+    return (async () => {
+      let failed = false
+      try {
+        await collectBzdBatches('near', { read: (batch) => readKv(bzdStageKey(batch)), write: saveBzdStage })
+      } catch {
+        failed = true
+        console.warn(JSON.stringify({ source: 'bzd', stagingUpdate: 'failed', message: 'Ближний пакет не сохранён; остальные источники продолжают работу' }))
+      }
+      const result = await readBzdStagedResult(requestedPairs(30))
+      if (!failed) return result
+      const now = new Date()
+      const nearEnd = addDays(localDate(now), 3)
+      return { ...result,
+        trips: result.trips.map((trip) => trip.serviceDate < nearEnd ? { ...trip,
+          bookingOptions: trip.bookingOptions.map((option) => ({ ...option, lastKnown: true })) } : trip),
+        health: { ...result.health, status: 'stale' as const, message: 'Ближний пакет БЖД не сохранён',
+          coverage: result.health.coverage?.map((item) => item.date < nearEnd ? { ...item, status: 'error' as const, checkedAt: now.toISOString() } : item) },
+      }
+    })().catch((error) => errorResult(source.id, source.name, source.kind, source.url, error))
   }
   return withSourceDeadline<SourceResult>(collectionDeadline(source.id, mode), async () => {
     switch (source.adapter) {

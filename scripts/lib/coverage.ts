@@ -21,11 +21,12 @@ export function completeFailedCoverage(result: SourceResult, pairs: Array<{ dire
   return { ...result, health: { ...result.health, coverage } }
 }
 
-export async function collectPairs(base: Pick<SourceHealth, 'id' | 'name' | 'url' | 'kind'>, pairs: Array<{ direction: Direction; date: string }>, task: (direction: Direction, date: string) => Promise<Trip[]>): Promise<SourceResult> {
+export async function collectPairs(base: Pick<SourceHealth, 'id' | 'name' | 'url' | 'kind'>, pairs: Array<{ direction: Direction; date: string }>, task: (direction: Direction, date: string) => Promise<Trip[]>, concurrency = 2): Promise<SourceResult> {
+  if (![1, 2].includes(concurrency)) throw new Error('Недопустимая параллельность источника')
   const coverage: SourceCoverage[] = []
   let stop = false
   const failures = new Map<Direction, number>()
-  const batches = await mapConcurrent(pairs, 2, async ({ direction, date }): Promise<Trip[]> => {
+  const batches = await mapConcurrent(pairs, concurrency, async ({ direction, date }): Promise<Trip[]> => {
     try {
       if (stop || (failures.get(direction) ?? 0) >= 3) throw new Error('Последующие запросы остановлены после запрета или повторных сбоев направления')
       sourceSignal()?.throwIfAborted()
@@ -46,7 +47,7 @@ export async function collectPairs(base: Pick<SourceHealth, 'id' | 'name' | 'url
   })
   const trips = batches.flat()
   const successful = coverage.filter((item) => item.status === 'ok').map((item) => item.checkedAt).sort()
-  return { trips, health: { ...base, status: successful.length === coverage.length ? 'ok' : successful.length ? 'stale' : 'error',
+  return { trips, halted: stop || [...failures.values()].some((count) => count >= 3), health: { ...base, status: successful.length === coverage.length ? 'ok' : successful.length ? 'stale' : 'error',
     checkedAt: new Date().toISOString(), lastSuccessAt: successful.at(-1), tripsFound: trips.length, coverage,
     message: coverage.find((item) => item.status === 'error')?.message } }
 }

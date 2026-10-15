@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { handleHealthRequest } from '../../functions/api/_health'
 import { fixtureKv } from '../fixtures/schedule'
 import type { SnapshotManifest } from '../../src/types'
+import { addDays } from '../../src/lib/date'
 
 const now = new Date('2026-10-14T09:00:00Z')
 const date = '2026-10-15'
@@ -32,5 +33,23 @@ describe('public monitoring contains no private schedules or credentials', () =>
     expect(text).not.toContain('bookingOptions')
     expect(text).not.toContain('SESSION_SECRET')
     expect((await handleHealthRequest(new Request('https://site.test/api/health?source=avtoslava'), fixtureKv(date, now), now)).status).toBe(503)
+  })
+
+  it('checks far BZD dates independently: fresh near data cannot hide an old or missing far date', async () => {
+    const manifest = (await fixtureKv(date, now).get<SnapshotManifest>('manifest:active', 'json'))!
+    for (const delayed of [false, true]) {
+      const bzd = { ...manifest.sources[0], id: 'bzd', name: 'БЖД', url: 'https://pass.rw.by/ru/', failureStreak: 1, lastCompleteSuccessAt: now.toISOString(),
+        coverage: Array.from({ length: 30 }, (_, day) => (['mogilev-minsk', 'minsk-mogilev'] as const).map((direction) => ({
+          direction, date: addDays('2026-10-14', day), status: 'ok' as const,
+          checkedAt: new Date(now.getTime() - (day === 29 && delayed ? 76 : day >= 3 ? 60 : 0) * 60000).toISOString(),
+        }))).flat() }
+      const storage = fixtureKv(date, now, new Map([['manifest:active', { ...manifest, sources: [bzd] }]]))
+      expect((await handleHealthRequest(new Request('https://site.test/api/health?source=bzd'), storage, now)).status).toBe(200)
+      const far = await handleHealthRequest(new Request('https://site.test/api/health?source=bzd&check=full'), storage, now)
+      expect(far.status).toBe(delayed ? 503 : 200)
+      expect(await far.json()).toMatchObject({ scope: 'far', source: 'bzd' })
+      bzd.coverage.pop()
+      expect((await handleHealthRequest(new Request('https://site.test/api/health?source=bzd&check=full'), storage, now)).status).toBe(503)
+    }
   })
 })

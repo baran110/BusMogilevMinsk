@@ -17,11 +17,14 @@ export async function handleHealthRequest(request: Request, kv: KvReader, now = 
       const source = manifest.sources.find((item) => item.id === sourceId)
       if (!source || source.status === 'unchecked') return json({ error: 'Источник расписаний не подключён' }, 404)
       const today = localDate(now)
-      const complete = (['mogilev-minsk', 'minsk-mogilev'] as const).every((direction) => [0, 1, 2].every((day) => source.coverage?.some((item) =>
-        item.direction === direction && item.date === addDays(today, day) && item.status === 'ok' && observationAge(item.checkedAt, now) <= 20 * 60000)))
-      const tolerated = source.failureStreak === 1 && observationAge(source.lastCompleteSuccessAt, now) <= 20 * 60000
+      const far = url.searchParams.get('check') === 'full'
+      const days = far ? Array.from({ length: 27 }, (_, i) => i + 3) : [0, 1, 2]
+      const complete = (['mogilev-minsk', 'minsk-mogilev'] as const).every((direction) => days.every((day) => source.coverage?.some((item) =>
+        item.direction === direction && item.date === addDays(today, day) && item.status === 'ok' && observationAge(item.checkedAt, now) <= (far ? 75 : 20) * 60000)))
+      const tolerated = !far && source.failureStreak === 1 && observationAge(source.lastCompleteSuccessAt, now) <= 20 * 60000
       const healthy = complete || tolerated
-      return json({ healthy, source: sourceId, status: source.status, failures: source.failureStreak ?? null, lastSuccessAt: source.lastSuccessAt ?? null }, healthy ? 200 : 503)
+      return json({ healthy, source: sourceId, scope: far ? 'far' : 'near', status: source.status,
+        failures: source.failureStreak ?? null, lastSuccessAt: source.lastSuccessAt ?? null }, healthy ? 200 : 503)
     }
     if (url.searchParams.get('check') === 'full') {
       const today = localDate(now)

@@ -66,6 +66,12 @@ async function put(path: string, body: unknown): Promise<void> {
   if (result.success !== true) throw new Error('Cloudflare не подтвердил запись KV')
 }
 
+export async function writeKvEntry(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const serialized = JSON.stringify(value)
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds < 60 || Buffer.byteLength(serialized, 'utf8') > 2 * 1024 * 1024) throw new Error('Неверный размер или срок хранения промежуточных данных')
+  await put('bulk', [{ key, value: serialized, expiration_ttl: ttlSeconds }])
+}
+
 export async function publishSnapshots(manifest: SnapshotManifest, snapshots: DirectionSnapshot[], previous: PreviousSnapshots, now = new Date()): Promise<void> {
   validatePublication(manifest, snapshots, previous, now)
   const entries = snapshots.map((snapshot) => ({ key: manifest.directions[snapshot.direction], value: JSON.stringify(snapshot), expiration_ttl: 6 * 3600 }))

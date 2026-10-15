@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { dispatchCollection } from '../../scheduler'
+import { dispatchBzdFar, dispatchCollection, dispatchUpdates } from '../../scheduler'
 
 afterEach(() => vi.unstubAllGlobals())
 const now = Date.parse('2026-10-14T09:10:00Z')
@@ -32,5 +32,44 @@ describe('external timer dispatch without stale-job accumulation', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })))
     await expect(dispatchCollection(env, now)).rejects.toThrow('401')
     await expect(dispatchCollection({}, now)).rejects.toThrow('not configured')
+  })
+
+  it('dispatches far dates once per hour and never repeats a failed hourly attempt', async () => {
+    const hour = Math.floor(now / 3600000)
+    for (const attempted of [false, true]) {
+      const dispatches: unknown[] = []
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+        if (url.endsWith('/dispatches')) { dispatches.push(JSON.parse(String(init.body))); return new Response(null, { status: 204 }) }
+        return new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: attempted ? [{ name: `bzd/far/${hour}`, head_branch: 'main', status: 'completed', conclusion: 'failure' }] : [] } : { state: 'active' }))
+      }))
+      expect(await dispatchBzdFar(env, now)).toBe(attempted ? 'duplicate' : 'dispatched')
+      expect(dispatches).toEqual(attempted ? [] : [{ ref: 'main', inputs: { slot: String(hour), dispatch_slot: String(slot), confirm: 'publish' } }])
+    }
+  })
+
+  it('dispatches the main cycle while a long BZD workflow is busy, and vice versa', async () => {
+    for (const busyFar of [false, true]) {
+      const dispatches: string[] = []
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        if (url.endsWith('/dispatches')) { dispatches.push(url); return new Response(null, { status: 204 }) }
+        const occupied = url.includes('collect-bzd-far.yml') === busyFar
+        return new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: occupied ? [{ name: 'old', head_branch: 'main', status: 'in_progress' }] : [] } : { state: 'active' }))
+      }))
+      expect(await dispatchUpdates(env, now)).toEqual({ collection: busyFar ? 'dispatched' : 'busy', bzdFar: busyFar ? 'busy' : 'dispatched' })
+      expect(dispatches).toHaveLength(1)
+      expect(dispatches[0].includes('collect-bzd-far.yml')).toBe(!busyFar)
+    }
+  })
+
+  it('still dispatches the main cycle if the far workflow is disabled, then reports the error', async () => {
+    const dispatches: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/dispatches')) { dispatches.push(url); return new Response(null, { status: 204 }) }
+      if (url.includes('/runs?')) return new Response('{"workflow_runs":[]}')
+      return new Response(JSON.stringify({ state: url.includes('collect-bzd-far.yml') ? 'disabled_inactivity' : 'active' }))
+    }))
+    await expect(dispatchUpdates(env, now)).rejects.toThrow('could not be dispatched')
+    expect(dispatches).toHaveLength(1)
+    expect(dispatches[0]).toContain('/collect.yml/dispatches')
   })
 })
