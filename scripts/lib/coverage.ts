@@ -9,6 +9,18 @@ export function requestedPairs(days: number): Array<{ direction: Direction; date
   return Array.from({ length: days }, (_, day) => (['mogilev-minsk', 'minsk-mogilev'] as const).map((direction) => ({ direction, date: addDays(today, day) }))).flat()
 }
 
+export function completeFailedCoverage(result: SourceResult, pairs: Array<{ direction: Direction; date: string }>): SourceResult {
+  if (result.health.status !== 'error' && result.health.status !== 'stale') return result
+  const coverage = [...(result.health.coverage ?? [])]
+  for (const pair of pairs) {
+    if (!coverage.some((item) => item.direction === pair.direction && item.date === pair.date)) {
+      coverage.push({ ...pair, status: 'error', checkedAt: result.health.checkedAt ?? new Date().toISOString(),
+        message: result.health.message || 'Источник не подтвердил запрошенную дату' })
+    }
+  }
+  return { ...result, health: { ...result.health, coverage } }
+}
+
 export async function collectPairs(base: Pick<SourceHealth, 'id' | 'name' | 'url' | 'kind'>, pairs: Array<{ direction: Direction; date: string }>, task: (direction: Direction, date: string) => Promise<Trip[]>): Promise<SourceResult> {
   const coverage: SourceCoverage[] = []
   let stop = false

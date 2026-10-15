@@ -45,7 +45,10 @@ export async function handleTripsRequest(request: Request, kv: KvReader, now = n
     generatedAt: snapshot.generatedAt,
     dataMode: 'live',
     stale: usedBackup || isSnapshotStale(snapshot.generatedAt, now) || trips.some((trip) => trip.lastKnown),
-    partial: snapshot.sources.some((source) => source.status === 'error' || source.status === 'stale' || source.coverage?.some((item) => item.direction === direction && item.date === date && item.status === 'error')),
+    partial: snapshot.sources.some((source) => {
+      const coverage = source.coverage?.filter((item) => item.direction === direction && item.date === date)
+      return coverage?.length ? coverage.some((item) => item.status === 'error') : source.status === 'error' || source.status === 'stale'
+    }),
     usedBackup,
     trips,
     sources: snapshot.sources,

@@ -5,6 +5,8 @@ import { fixtureKv, testAuthEnv, TEST_KEY } from '../fixtures/schedule'
 import worker from '../../worker'
 import { onRequest } from '../../functions/api/trips'
 import type { DirectionSnapshot, SnapshotManifest, TripsResponse } from '../../src/types'
+import { completeFailedCoverage } from '../../scripts/lib/coverage'
+import { buildSnapshots } from '../../scripts/lib/snapshots'
 
 const now = new Date('2026-10-14T09:00:00Z')
 const date = '2026-10-15'
@@ -48,6 +50,32 @@ describe('schedule API', () => {
     expect(body.stale).toBe(true)
     expect(body.trips[0]).toMatchObject({ lastSeenAt: old.toISOString(), price: null, availability: 'unknown', lastKnown: true })
     expect(body.trips[0].seats).toBeUndefined()
+  })
+  it('reports a partial result for the selected date rather than a different date', async () => {
+    const kv = fixtureKv(date, now)
+    const manifest = (await kv.get<SnapshotManifest>('manifest:active', 'json'))!
+    const snapshot = (await kv.get<DirectionSnapshot>('out', 'json'))!
+    const health = { ...snapshot.sources[0], status: 'stale' as const, coverage: [
+      { direction: snapshot.direction, date, status: 'ok' as const, checkedAt: now.toISOString() },
+      { direction: snapshot.direction, date: '2026-10-16', status: 'error' as const, checkedAt: now.toISOString() },
+    ] }
+    const values = new Map<string, unknown>([['manifest:active', manifest], ['out', { ...snapshot, sources: [health] }]])
+    const response = await handleTripsRequest(new Request(url), fixtureKv(date, now, values), now)
+    expect(await response.json()).toMatchObject({ partial: false })
+    health.coverage[0].status = 'error'
+    const partial = await handleTripsRequest(new Request(url), fixtureKv(date, now, values), now)
+    expect(await partial.json()).toMatchObject({ partial: true })
+  })
+  it('does not reuse a recent empty confirmation after a source fails before returning any dates', async () => {
+    const previousKv = fixtureKv(date, new Date(now.getTime() - 5 * 60000))
+    const previous = (await previousKv.get<DirectionSnapshot>('out', 'json'))!
+    previous.trips = []
+    const failed = completeFailedCoverage({ trips: [], health: { ...previous.sources[0], coverage: undefined,
+      status: 'error', checkedAt: now.toISOString(), message: 'Нет ответа источника' } }, [{ direction: previous.direction, date }])
+    const { manifest, snapshots } = buildSnapshots([failed], { 'mogilev-minsk': previous }, now, 'near')
+    const values = new Map<string, unknown>([['manifest:active', manifest], ...snapshots.map((snapshot): [string, unknown] =>
+      [manifest.directions[snapshot.direction], snapshot])])
+    expect((await handleTripsRequest(new Request(url), fixtureKv(date, now, values), now)).status).toBe(503)
   })
   it('rejects a corrupt snapshot and uses an explicitly referenced previous version', async () => {
     const kv = fixtureKv(date, now)

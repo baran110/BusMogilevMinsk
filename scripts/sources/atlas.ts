@@ -41,7 +41,9 @@ export function dateFromCalendarLabel(label: string, referenceDate = localDate()
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-export function parseCard(text: string, direction: Direction, date: string, index: number, seenAt: string): Trip | undefined {
+interface CalendarSelection { label: string; selected: boolean }
+
+export function parseCard(text: string, direction: Direction, date: string, index: number, seenAt: string, calendar?: CalendarSelection): Trip | undefined {
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
   const times = lines.filter((line) => /^\d{2}:\d{2}$/.test(line)).slice(0, 2)
   if (times.length < 2) return undefined
@@ -51,10 +53,13 @@ export function parseCard(text: string, direction: Direction, date: string, inde
   const arrivalDateLabel = dateFromCalendarLabel(lines[secondTime + 1] || '', date)
   const durationMatch = text.match(/В пути:\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
   const statedDuration = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : null
+  const today = localDate(new Date(seenAt))
+  const confirmedToday = !departureDateLabel && !arrivalDateLabel && date === today && calendar?.selected
+    && dateFromCalendarLabel(calendar.label, today) === date && statedDuration !== null && statedDuration > 0 && statedDuration < 1440
   // The current-day departure can omit its date. An explicit arrival date plus
   // a stated journey shorter than a day still proves the departure day, including midnight crossings.
   const provenDate = departureDateLabel ?? (arrivalDateLabel && statedDuration !== null && statedDuration > 0 && statedDuration < 1440
-    ? addDays(arrivalDateLabel, times[0] > times[1] ? -1 : 0) : undefined)
+    ? addDays(arrivalDateLabel, times[0] > times[1] ? -1 : 0) : confirmedToday ? date : undefined)
   if (provenDate !== date) return undefined
   const fromIndex = firstTime + (departureDateLabel ? 2 : 1)
   const toIndex = secondTime + (arrivalDateLabel ? 2 : 1)
@@ -68,6 +73,7 @@ export function parseCard(text: string, direction: Direction, date: string, inde
   const arrivalAt = arrivalDateLabel ? validatedDeparture(arrivalDateLabel, times[1]) : arrivalFromClock(date, departureAt, times[1])
   const durationMinutes = arrivalAt ? (Date.parse(arrivalAt) - Date.parse(departureAt)) / 60000 : statedDuration
   if (durationMinutes !== null && (durationMinutes <= 0 || durationMinutes >= 1440)) return undefined
+  if (confirmedToday && durationMinutes !== statedDuration) return undefined
   const priceLine = lines.find((line) => /^\d+(?:[.,]\d+)?\s*[^A-Za-zА-Яа-я0-9]*$/u.test(line))
   const price = knownNumber(priceLine?.match(/^\d+(?:[.,]\d+)?/)?.[0])
   const soldOut = /нет мест/i.test(text)
@@ -163,9 +169,10 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
         }).filter(Boolean))
         if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction} ${serviceDate}: ${cardTexts.length} card texts`)
         const observedAt = new Date().toISOString()
+        const calendar = await button.evaluate((element) => ({ label: (element as HTMLElement).innerText, selected: element.getAttribute('aria-selected') === 'true' }))
         parsed = []
         cardTexts.forEach((text, index) => {
-          const trip = parseCard(text, direction, serviceDate, index, observedAt)
+          const trip = parseCard(text, direction, serviceDate, index, observedAt, calendar)
           if (trip) parsed.push(trip)
         })
         if (parsed.length > 0 && parsed.length === cardTexts.length) break
@@ -176,7 +183,7 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
             cards: cardTexts.length, datePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => dateFromCalendarLabel(line, serviceDate) ? index : -1).filter((index) => index >= 0)),
             timePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => /^\d{2}:\d{2}$/.test(line.trim()) ? index : -1).filter((index) => index >= 0)),
             calendarButtons: await dateButtons.evaluateAll((buttons) => buttons.slice(0, 3).map((element) => element.outerHTML.slice(0, 2000))),
-            dateInputs: await page.locator('input').evaluateAll((inputs) => inputs.filter((element) => /^\d{4}-\d{2}-\d{2}$/.test(element.value))
+            dateInputs: await page.locator('input').evaluateAll((inputs) => inputs.filter((element): element is HTMLInputElement => element instanceof HTMLInputElement && /^\d{4}-\d{2}-\d{2}$/.test(element.value))
               .slice(0, 10).map((element) => ({ name: element.name, value: element.value, testId: element.getAttribute('data-testid') }))) } }))
         }
         if (!parsed.length) throw new Error(`Atlas: дата карточек ${serviceDate} не подтверждена`)

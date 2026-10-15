@@ -6,6 +6,7 @@ import { readPrevious, publishSnapshots } from './lib/kv'
 import { buildSnapshots } from './lib/snapshots'
 import { withSourceDeadline } from './lib/runtime'
 import { errorResult, type SourceResult } from './lib/source'
+import { completeFailedCoverage, requestedPairs } from './lib/coverage'
 import { collectAtlas } from './sources/atlas'
 import { collectBusPro } from './sources/buspro'
 import { collectBzd } from './sources/bzd'
@@ -17,7 +18,7 @@ const horizon = mode === 'near' ? 3 : 30
 const selected = process.env.SOURCE_IDS?.split(',').filter(Boolean)
 if (selected && !localOnly) throw new Error('Выбор отдельных источников разрешён только при локальной диагностике')
 const entries = (registry as SourceRegistryEntry[]).filter((source) => !selected || selected.includes(source.id))
-const results = await Promise.all(entries.map((source): Promise<SourceResult> => {
+const results = (await Promise.all(entries.map((source): Promise<SourceResult> => {
   if (!source.enabled || source.adapter === 'link-only' || source.adapter === 'availability') {
     return Promise.resolve({ trips: [], health: { id: source.id, name: source.name, kind: source.kind, url: source.url,
       status: 'unchecked', message: source.note || 'Расписание пока не подключено' } })
@@ -37,7 +38,7 @@ const results = await Promise.all(entries.map((source): Promise<SourceResult> =>
       default: throw new Error(`Адаптер ${source.adapter} не реализован`)
     }
   }).catch((error) => errorResult(source.id, source.name, source.kind, source.url, error))
-}))
+}))).map((result) => completeFailedCoverage(result, requestedPairs(horizon)))
 const previous = localOnly ? { snapshots: {} } : await readPrevious()
 const { manifest, snapshots } = buildSnapshots(results, previous.snapshots, new Date(), mode)
 if (!localOnly && previous.manifest) {
