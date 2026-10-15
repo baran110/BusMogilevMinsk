@@ -1,4 +1,4 @@
-name: Проверка дальнего пакета БЖД без публикации
+name: Проверка всех дальних пакетов БЖД без публикации
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -27,8 +27,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Пять дальних дат в обе стороны, один запрос за раз, без KV
-        timeout-minutes: 12
+      - name: Все 27 дальних дат в обе стороны, один запрос за раз, без KV
+        timeout-minutes: 48
         env:
           DEBUG_SOURCE_SCHEMA: '1'
-        run: node --import tsx scripts/collect-bzd.ts --local --far --batch=0
+        run: node --import tsx scripts/collect-bzd.ts --local --far

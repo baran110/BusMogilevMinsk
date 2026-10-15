@@ -11,7 +11,7 @@ describe('external timer dispatch without stale-job accumulation', () => {
       const dispatches: unknown[] = []
       vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
         if (url.endsWith('/dispatches')) { dispatches.push(JSON.parse(String(init.body))); return new Response(null, { status: 204 }) }
-        if (url.includes('/runs?')) return new Response(JSON.stringify({ workflow_runs: hasFull ? [{ name: `collect/full/${slot - 1}`, head_branch: 'main', status: 'completed', conclusion: 'success' }] : [] }))
+        if (url.includes('/runs?')) return new Response(JSON.stringify({ workflow_runs: hasFull ? [{ name: 'Обновление расписания', display_title: `collect/full/${slot - 1}`, head_branch: 'main', status: 'completed', conclusion: 'success' }] : [] }))
         return new Response('{"state":"active"}')
       }))
       expect(await dispatchCollection(env, now)).toBe('dispatched')
@@ -19,7 +19,7 @@ describe('external timer dispatch without stale-job accumulation', () => {
     }
   })
   it('skips a busy or duplicate slot and rejects a disabled workflow', async () => {
-    for (const [run, expected] of [[{ name: 'collect/near/old', status: 'in_progress' }, 'busy'], [{ name: `collect/near/${slot}`, status: 'completed' }, 'duplicate']] as const) {
+    for (const [run, expected] of [[{ name: 'Обновление расписания', display_title: 'collect/near/old', status: 'in_progress' }, 'busy'], [{ name: 'Обновление расписания', display_title: `collect/near/${slot}`, status: 'completed' }, 'duplicate']] as const) {
       const fetcher = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: [{ ...run, head_branch: 'main' }] } : { state: 'active' })))
       vi.stubGlobal('fetch', fetcher)
       expect(await dispatchCollection(env, now)).toBe(expected)
@@ -32,6 +32,9 @@ describe('external timer dispatch without stale-job accumulation', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })))
     await expect(dispatchCollection(env, now)).rejects.toThrow('401')
     await expect(dispatchCollection({}, now)).rejects.toThrow('not configured')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/runs?')
+      ? { workflow_runs: [{ name: `collect/near/${slot}`, head_branch: 'main', status: 'completed' }] } : { state: 'active' }))))
+    await expect(dispatchCollection(env, now)).rejects.toThrow('invalid workflow list')
   })
 
   it('dispatches far dates once per hour and never repeats a failed hourly attempt', async () => {
@@ -40,7 +43,7 @@ describe('external timer dispatch without stale-job accumulation', () => {
       const dispatches: unknown[] = []
       vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
         if (url.endsWith('/dispatches')) { dispatches.push(JSON.parse(String(init.body))); return new Response(null, { status: 204 }) }
-        return new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: attempted ? [{ name: `bzd/far/${hour}`, head_branch: 'main', status: 'completed', conclusion: 'failure' }] : [] } : { state: 'active' }))
+        return new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: attempted ? [{ name: 'Обновление расписания', display_title: `bzd/far/${hour}`, head_branch: 'main', status: 'completed', conclusion: 'failure' }] : [] } : { state: 'active' }))
       }))
       expect(await dispatchBzdFar(env, now)).toBe(attempted ? 'duplicate' : 'dispatched')
       expect(dispatches).toEqual(attempted ? [] : [{ ref: 'main', inputs: { slot: String(hour), dispatch_slot: String(slot), confirm: 'publish' } }])
@@ -53,7 +56,7 @@ describe('external timer dispatch without stale-job accumulation', () => {
       vi.stubGlobal('fetch', vi.fn(async (url: string) => {
         if (url.endsWith('/dispatches')) { dispatches.push(url); return new Response(null, { status: 204 }) }
         const occupied = url.includes('collect-bzd-far.yml') === busyFar
-        return new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: occupied ? [{ name: 'old', head_branch: 'main', status: 'in_progress' }] : [] } : { state: 'active' }))
+        return new Response(JSON.stringify(url.includes('/runs?') ? { workflow_runs: occupied ? [{ name: 'Обновление расписания', display_title: 'old', head_branch: 'main', status: 'in_progress' }] : [] } : { state: 'active' }))
       }))
       expect(await dispatchUpdates(env, now)).toEqual({ collection: busyFar ? 'dispatched' : 'busy', bzdFar: busyFar ? 'busy' : 'dispatched' })
       expect(dispatches).toHaveLength(1)
