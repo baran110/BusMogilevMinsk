@@ -4,7 +4,7 @@ import registry from '../data/sources.json'
 import type { SourceRegistryEntry } from '../src/types'
 import { readPrevious, publishSnapshots } from './lib/kv'
 import { buildSnapshots } from './lib/snapshots'
-import { withSourceDeadline } from './lib/runtime'
+import { collectionDeadline, withSourceDeadline } from './lib/runtime'
 import { errorResult, type SourceResult } from './lib/source'
 import { completeFailedCoverage, requestedPairs } from './lib/coverage'
 import { collectAtlas } from './sources/atlas'
@@ -23,7 +23,7 @@ const results = (await Promise.all(entries.map((source): Promise<SourceResult> =
     return Promise.resolve({ trips: [], health: { id: source.id, name: source.name, kind: source.kind, url: source.url,
       status: 'unchecked', message: source.note || 'Расписание пока не подключено' } })
   }
-  return withSourceDeadline<SourceResult>(mode === 'near' ? 90_000 : 360_000, async () => {
+  return withSourceDeadline<SourceResult>(collectionDeadline(source.id, mode), async () => {
     switch (source.adapter) {
       case 'transporter-api': return collectTransporter({ id: source.id, name: source.name, kind: source.kind,
         baseUrl: (source.apiUrl || source.url).replace(/\/$/, ''), bookingUrl: source.bookingUrl, cityIds: source.cityIds }, horizon)

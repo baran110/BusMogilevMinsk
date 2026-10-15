@@ -40,9 +40,12 @@ function trainName(type: string): string {
 }
 
 export function bzdRouteUrl(direction: Direction, date: string): string {
-  const from = direction === 'mogilev-minsk' ? 'Могилев' : 'Минск'
-  const to = direction === 'mogilev-minsk' ? 'Минск' : 'Могилев'
-  const query = new URLSearchParams({ from, to, date })
+  // Codes are verified against the official form and train links; do not rely
+  // on resolving an ambiguous city name for every date request.
+  const mogilev = { name: 'Могилёв-1', code: '2100150' }
+  const minsk = { name: 'Минск-Пассажирский', code: '2100000' }
+  const [from, to] = direction === 'mogilev-minsk' ? [mogilev, minsk] : [minsk, mogilev]
+  const query = new URLSearchParams({ from: from.name, from_exp: from.code, to: to.name, to_exp: to.code, date })
   return `https://pass.rw.by/ru/route/?${query}`
 }
 
@@ -127,8 +130,14 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
 
 export async function collectBzd(horizonDays = 30): Promise<SourceResult> {
   return collectPairs({ id: 'bzd', name: 'БЖД', kind: 'carrier', url: sourceUrl }, requestedPairs(horizonDays), async (direction, date) => {
-    const response = await fetchWithTimeout(bzdRouteUrl(direction, date))
+    const started = Date.now()
+    // A measured successful official response took 17.8 s including TLS/body.
+    // The shared 12 s default would discard it. The source deadline still bounds the whole cycle.
+    const response = await fetchWithTimeout(bzdRouteUrl(direction, date), {}, 25_000)
     const html = await response.text()
+    if (process.env.DEBUG_SOURCE_SCHEMA === '1') console.log(JSON.stringify({ bzdRequest: {
+      direction, date, status: response.status, elapsedMs: Date.now() - started, bytes: Buffer.byteLength(html, 'utf8'),
+    } }))
     const trips = parseBzdHtml(html, direction, date, new Date().toISOString())
     // Generic empty-message strings can also be hidden templates in a page that
     // contains trains. Without recognised rows the result remains unconfirmed.
