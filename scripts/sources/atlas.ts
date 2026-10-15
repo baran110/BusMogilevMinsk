@@ -174,7 +174,10 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
         if (process.env.DEBUG_SOURCE_SCHEMA === '1' && !parsed.length) {
           console.log(JSON.stringify({ atlasSchema: { direction, requestedDate: serviceDate,
             cards: cardTexts.length, datePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => dateFromCalendarLabel(line, serviceDate) ? index : -1).filter((index) => index >= 0)),
-            timePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => /^\d{2}:\d{2}$/.test(line.trim()) ? index : -1).filter((index) => index >= 0)) } }))
+            timePositions: cardTexts.slice(0, 2).map((text) => text.split('\n').map((line, index) => /^\d{2}:\d{2}$/.test(line.trim()) ? index : -1).filter((index) => index >= 0)),
+            calendarButtons: await dateButtons.evaluateAll((buttons) => buttons.slice(0, 3).map((element) => element.outerHTML.slice(0, 2000))),
+            dateInputs: await page.locator('input').evaluateAll((inputs) => inputs.filter((element) => /^\d{4}-\d{2}-\d{2}$/.test(element.value))
+              .slice(0, 10).map((element) => ({ name: element.name, value: element.value, testId: element.getAttribute('data-testid') }))) } }))
         }
         if (!parsed.length) throw new Error(`Atlas: дата карточек ${serviceDate} не подтверждена`)
         parsed.forEach((trip) => {

@@ -78,6 +78,7 @@ Read-only KV-диагностика: `pnpm diagnose:kv` в защищённой 
 | `quality.yml` | Проверки типов, unit/API, сборка и e2e для PR. Без Cloudflare-секретов. |
 | `diagnose.yml` | Чтение manifest/снимков/резервов, без записи. |
 | `diagnose-sources.yml` | Ограниченная проверка БЖД/Atlas без секретов и публикации. |
+| `diagnose-full.yml` | Отдельная проверка семи адаптеров на 30 дней, размеров снимков и покрытия. Без Cloudflare-секретов и публикации. |
 | `collect.yml` | Ручной или внешний dispatch на `main`, подтверждение `publish`, режим `near/full`. |
 | `deploy.yml` | Ручное подтверждение `production`, затем проверки того же коммита и публикация проверенной сборки. |
 

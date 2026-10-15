@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: source-diagnostics
+  cancel-in-progress: false
+
 jobs:
   sources:
     runs-on: ubuntu-latest

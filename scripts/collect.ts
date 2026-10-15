@@ -50,6 +50,11 @@ if (localOnly) {
   const target = resolve('data/snapshots/diagnostic.json')
   await mkdir(resolve('data/snapshots'), { recursive: true })
   await writeFile(target, JSON.stringify({ manifest, snapshots }, null, 2), 'utf8')
+  for (const snapshot of snapshots) {
+    const sizeBytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8')
+    console.log(JSON.stringify({ diagnostic: 'snapshot-budget', direction: snapshot.direction, trips: snapshot.trips.length,
+      sizeBytes, withinSnapshotBudget: sizeBytes <= 2 * 1024 * 1024 }))
+  }
   console.log(`Локальная проверка: ${snapshots.reduce((sum, snapshot) => sum + snapshot.trips.length, 0)} рейсов; внешняя публикация не выполнялась`)
 } else {
   await publishSnapshots(manifest, snapshots, previous)
