@@ -1,4 +1,4 @@
-name: Проверка очереди и ближнее обновление
+name: Приёмка ближней БЖД после исправления KV
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 6051fd7a4c7202920948261641a2d37ee5d9a741
+          ref: 1f0cda3362a48459bb67a60b94dd2021d418faf0
           persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
@@ -41,22 +41,11 @@ jobs:
           const root = 'https://api.github.com/repos/baran110/BusMogilevMinsk';
           const headers = {Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept:'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28'};
           const main = await (await fetch(`${root}/git/ref/heads/main`, {headers})).json();
-          if (main.object?.sha !== '6051fd7a4c7202920948261641a2d37ee5d9a741') throw new Error('Main changed; stop recovery');
+          if (main.object?.sha !== '1f0cda3362a48459bb67a60b94dd2021d418faf0') throw new Error('Main changed; stop recovery');
           const run = await (await fetch(`${root}/actions/runs/38901133829`, {headers})).json();
           const workflow = await (await fetch(`${root}/actions/workflows/collect.yml`, {headers})).json();
           console.log(JSON.stringify({legacyRunStatus:run.status,legacyRunConclusion:run.conclusion,legacyRunTitle:run.display_title,workflowState:workflow.state,schedulerTokenConfigured:!!process.env.SCHEDULER_GITHUB_TOKEN}));
           JS
-      - name: Сохранить причину ошибки промежуточного пакета в диагностике
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('scripts/collect.ts');s=p.read_text();old='''      } catch {
-                  failed = true''';new='''      } catch (error) {
-                  console.warn(JSON.stringify({source:'bzd',stagingFailureReason:error instanceof Error ? error.message.slice(0,180) : 'Unknown staging error'}))
-                  failed = true'''
-          if old not in s: raise SystemExit('Expected diagnostic location changed')
-          p.write_text(s.replace(old,new,1))
-          PY
       - run: pnpm exec playwright install --with-deps chromium
       - name: Опубликовать реальные предложения проверенным collector
         timeout-minutes: 8
@@ -74,6 +63,10 @@ jobs:
             const denied = await fetch(`${host}/api/trips?direction=mogilev-minsk&date=2026-10-16`, {cache:'no-store',signal:AbortSignal.timeout(25000)});
             console.log(JSON.stringify({host, healthStatus:health.status, health:body, unauthenticatedStatus:denied.status}));
             if (health.status !== 200 || body.healthy !== true || denied.status !== 401) throw new Error('Production API verification failed');
+            const bzd=await fetch(`${host}/api/health?source=bzd`,{cache:'no-store',signal:AbortSignal.timeout(25000)});
+            const bzdBody=await bzd.json();
+            console.log(JSON.stringify({host,bzdNearStatus:bzd.status,bzd:bzdBody}));
+            if(bzd.status!==200||bzdBody.healthy!==true)throw new Error('Near BZD is not confirmed');
           }
           JS
       - name: Проверить свежий запуск штатного collector
