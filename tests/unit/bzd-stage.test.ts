@@ -95,7 +95,33 @@ describe('independent BZD packages retain actual observations', () => {
     expect(writes[0].expiration_ttl).toBe(7 * 86400)
     expect(writes[0].value).not.toContain('manifest:active')
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => new Response(init.method === 'PUT' ? '{"success":true}' : '{}')))
-    await expect(saveBzdStage(stage)).rejects.toThrow('не подтверждена')
+    await expect(saveBzdStage(stage, async () => {})).rejects.toThrow('не подтверждена')
+  })
+
+  it('waits for a stale KV read without repeating the write or refreshing observations', async () => {
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'a'.repeat(32)); vi.stubEnv('KV_NAMESPACE_ID', 'b'.repeat(32)); vi.stubEnv('CLOUDFLARE_API_TOKEN', 'test-only-token')
+    const stage = createBzdStage(batch, result(), undefined, now)
+    const stale = createBzdStage(batch, result(batch, new Date('2026-10-14T09:00:00Z')), undefined, now)
+    let reads = 0, writes = 0
+    const pause = vi.fn(async () => {})
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      if (init.method === 'PUT') { writes++; return Response.json({ success: true }) }
+      reads++
+      return Response.json(reads < 3 ? stale : stage)
+    }))
+    await saveBzdStage(stage, pause)
+    expect(writes).toBe(1); expect(reads).toBe(3); expect(pause).toHaveBeenCalledTimes(2)
+    expect(stage.result.trips[0].bookingOptions[0].observedAt).toBe(now.toISOString())
+  })
+
+  it('compares JSON contents independently of object property order', async () => {
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'a'.repeat(32)); vi.stubEnv('KV_NAMESPACE_ID', 'b'.repeat(32)); vi.stubEnv('CLOUDFLARE_API_TOKEN', 'test-only-token')
+    const stage = createBzdStage(batch, result(), undefined, now)
+    const reordered = Object.fromEntries(Object.entries(JSON.parse(JSON.stringify(stage))).reverse())
+    const pause = vi.fn(async () => {})
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => Response.json(init.method === 'PUT' ? { success: true } : reordered)))
+    await saveBzdStage(stage, pause)
+    expect(pause).not.toHaveBeenCalled()
   })
 })
 

@@ -34,9 +34,11 @@ const results = (await Promise.all(entries.map((source): Promise<SourceResult> =
       let failed = false
       try {
         await collectBzdBatches('near', { read: (batch) => readKv(bzdStageKey(batch)), write: saveBzdStage })
-      } catch {
+      } catch (error) {
         failed = true
-        console.warn(JSON.stringify({ source: 'bzd', stagingUpdate: 'failed', message: 'Ближний пакет не сохранён; остальные источники продолжают работу' }))
+        console.warn(JSON.stringify({ source: 'bzd', stagingUpdate: 'failed',
+          reason: error instanceof Error ? error.message.slice(0, 180) : 'Неизвестная ошибка промежуточного пакета',
+          message: 'Ближний пакет не сохранён; остальные источники продолжают работу' }))
       }
       const result = await readBzdStagedResult(requestedPairs(30))
       if (!failed) return result
