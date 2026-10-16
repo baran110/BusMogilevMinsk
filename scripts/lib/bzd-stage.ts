@@ -6,6 +6,7 @@ import { completeFailedCoverage } from './coverage'
 import { readKv, writeKvEntry } from './kv'
 import { buildSnapshots } from './snapshots'
 import type { SourceResult } from './source'
+import { isDeepStrictEqual } from 'node:util'
 
 export const BZD_SOURCE = { id: 'bzd', name: 'БЖД', kind: 'carrier' as const, url: 'https://pass.rw.by/ru/' }
 export interface BzdBatch { scope: 'near' | 'far'; part: number; anchorDate: string }
@@ -130,10 +131,22 @@ export async function readBzdStagedResult(pairs: DatePair[], now = new Date()): 
   return combineBzdStages(reads.map((read) => read.status === 'fulfilled' ? read.value : undefined), pairs, now)
 }
 
-export async function saveBzdStage(stage: BzdStage): Promise<void> {
+export async function saveBzdStage(stage: BzdStage, waitForPropagation = () => new Promise<void>((resolve) => setTimeout(resolve, 15_000))): Promise<void> {
   if (!isBzdStage(stage)) throw new Error('Пакет БЖД не прошёл проверку')
   const key = bzdStageKey(stage)
   await writeKvEntry(key, stage, 7 * 86400)
-  const stored = await readKv<unknown>(key)
-  if (!isBzdStage(stored) || JSON.stringify(stored) !== JSON.stringify(stage)) throw new Error('Запись пакета БЖД не подтверждена')
+  const expected: unknown = JSON.parse(JSON.stringify(stage))
+  // A prior KV read can remain cached after a successful write. Read-only polling
+  // is bounded to 75 seconds; it never republishes or changes observation times.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const stored = await readKv<unknown>(key)
+    if (isBzdStage(stored) && isDeepStrictEqual(stored, expected)) {
+      if (attempt) console.log(JSON.stringify({ bzdStageVerified: key, readAttempt: attempt + 1 }))
+      return
+    }
+    console.warn(JSON.stringify({ bzdStagePropagation: key, readAttempt: attempt + 1,
+      expectedGeneratedAt: stage.generatedAt, storedGeneratedAt: isBzdStage(stored) ? stored.generatedAt : null }))
+    if (attempt < 5) await waitForPropagation()
+  }
+  throw new Error('Запись пакета БЖД не подтверждена после ожидания распространения KV')
 }
