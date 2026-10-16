@@ -6,7 +6,7 @@ Promise<SourceResult> {
   const checkedAt = new Date().toISOString()
   try {
     await fetchWithTimeout(url, {}, 30_000)
-    return { trips: [], health: { id, name, kind, url, status: 'unchecked', checkedAt, lastSuccessAt: checkedAt, tripsFound: 0, message } }
+    return { trips: [], health: { id, name, kind, url, status: 'unchecked', checkedAt, tripsFound: 0, message } }
   } catch (error) {
     return errorResult(id, name, kind, url, error)
   }

@@ -1,0 +1,37 @@
+name: Проверка готовности Cloudflare без изменений
+
+on:
+  push:
+    branches: [codex/restore-reliable-service]
+    paths: [.github/workflows/release-preflight.yml, scripts/release-preflight.ts]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.repository == 'baran110/BusMogilevMinsk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Только чтение конфигурации и ссылок KV
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+        run: |
+          node --import tsx scripts/release-preflight.ts
+          node --import tsx scripts/diagnose-kv.ts

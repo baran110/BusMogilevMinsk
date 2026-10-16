@@ -1,14 +1,10 @@
 import type { Direction } from '../types'
 
 export const MINSK_OFFSET = '+03:00'
+const minskDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Minsk', year: 'numeric', month: '2-digit', day: '2-digit' })
 
 export function localDate(date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Minsk',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
+  return minskDateFormatter.format(date)
 }
 
 export function addDays(date: string, amount: number): string {
@@ -41,10 +37,22 @@ export function formatTime(iso: string): string {
   }).format(new Date(iso))
 }
 
-export function formatDuration(minutes: number): string {
+export function formatDuration(minutes: number | null): string {
+  if (minutes === null) return 'Время в пути не подтверждено'
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
   return rest ? `${hours} ч ${rest} мин` : `${hours} ч`
+}
+
+export function isValidDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T12:00:00Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+export function isValidInstant(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && Number.isFinite(Date.parse(value))
 }
 
 export function formatUpdated(iso: string): string {

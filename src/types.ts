@@ -9,10 +9,14 @@ export interface BookingOption {
   sourceName: string
   sourceKind: SourceKind
   url: string
-  price: number
+  price: number | null
   currency: 'BYN'
   availability: AvailabilityStatus
   seats?: number
+  observedAt?: string
+  priceObservedAt?: string
+  availabilityObservedAt?: string
+  lastKnown?: boolean
 }
 
 export interface Trip {
@@ -20,8 +24,8 @@ export interface Trip {
   direction: Direction
   serviceDate: string
   departureAt: string
-  arrivalAt: string
-  durationMinutes: number
+  arrivalAt: string | null
+  durationMinutes: number | null
   carrierId: string
   carrierName: string
   vehicleType: VehicleType
@@ -30,12 +34,21 @@ export interface Trip {
   routeNumber?: string
   originStop: string
   destinationStop: string
-  price: number
+  price: number | null
   currency: 'BYN'
   availability: AvailabilityStatus
   seats?: number
   bookingOptions: BookingOption[]
   lastSeenAt: string
+  lastKnown?: boolean
+}
+
+export interface SourceCoverage {
+  direction: Direction
+  date: string
+  checkedAt: string
+  status: 'ok' | 'error'
+  message?: string
 }
 
 export interface SourceHealth {
@@ -48,6 +61,9 @@ export interface SourceHealth {
   checkedAt?: string
   tripsFound?: number
   message?: string
+  coverage?: SourceCoverage[]
+  lastCompleteSuccessAt?: string
+  failureStreak?: number
 }
 
 export interface TripsResponse {
@@ -57,10 +73,13 @@ export interface TripsResponse {
   stale: boolean
   trips: Trip[]
   sources: SourceHealth[]
+  dataMode?: 'live'
+  partial?: boolean
+  usedBackup?: boolean
 }
 
 export interface DirectionSnapshot {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   direction: Direction
   generatedAt: string
   trips: Trip[]
@@ -68,11 +87,14 @@ export interface DirectionSnapshot {
 }
 
 export interface SnapshotManifest {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   version: string
   generatedAt: string
   directions: Record<Direction, string>
   sources: SourceHealth[]
+  previousDirections?: Partial<Record<Direction, string>>
+  previousVersion?: string
+  mode?: 'near' | 'full'
 }
 
 export interface SourceRegistryEntry {
@@ -84,4 +106,7 @@ export interface SourceRegistryEntry {
   adapter: 'transporter-api' | 'buspro' | 'atlas' | 'bzd-html' | 'availability' | 'link-only'
   enabled: boolean
   note?: string
+  apiUrl?: string
+  companyId?: number
+  cityIds?: { mogilev: number; minsk: number }
 }

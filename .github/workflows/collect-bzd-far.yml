@@ -1,0 +1,62 @@
+name: Дальние поезда БЖД — независимые пакеты
+run-name: bzd/far/${{ inputs.slot }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Номер часового интервала UTC; задаёт таймер'
+        type: string
+        required: false
+      dispatch_slot:
+        description: 'Десятиминутный интервал отправки; для проверки задержки очереди'
+        type: string
+        required: false
+      confirm:
+        description: 'Для записи промежуточных пакетов в рабочий KV введите publish'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bzd-far-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Отклонить просроченный запуск таймера
+        env:
+          SLOT: ${{ inputs.slot }}
+          DISPATCH_SLOT: ${{ inputs.dispatch_slot }}
+        run: |
+          if [ -n "$SLOT" ]; then
+            [[ "$SLOT" =~ ^[0-9]{6,9}$ ]] || { echo "::error::Неверный слот"; exit 1; }
+            [[ "$DISPATCH_SLOT" =~ ^[0-9]{7,10}$ ]] || { echo "::error::Нет интервала отправки"; exit 1; }
+            (( DISPATCH_SLOT / 6 == SLOT )) || { echo "::error::Интервалы не согласованы"; exit 1; }
+            age=$(( $(date +%s) - DISPATCH_SLOT * 600 ))
+            (( age >= -60 && age <= 600 )) || { echo "::error::Дальний запуск слишком долго ожидал очередь"; exit 1; }
+          fi
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test:run
+      - name: Последовательно проверить дальние даты и сохранить каждый пакет
+        timeout-minutes: 48
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+        run: node --import tsx scripts/collect-bzd.ts --far --publish
