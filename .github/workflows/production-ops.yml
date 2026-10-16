@@ -1,0 +1,68 @@
+name: Восстановление публикации после проверки
+
+on:
+  push:
+    branches: [codex/restore-reliable-service]
+    paths: [.github/workflows/production-ops.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: approved-recovery-operations
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: github.repository == 'baran110/BusMogilevMinsk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 6051fd7a4c7202920948261641a2d37ee5d9a741
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Удалить только зависший запуск пробного выпуска из очереди
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHEDULER_GITHUB_TOKEN: ${{ secrets.SCHEDULER_GITHUB_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          const root = 'https://api.github.com/repos/baran110/BusMogilevMinsk';
+          const headers = {Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept:'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28'};
+          const main = await (await fetch(`${root}/git/ref/heads/main`, {headers})).json();
+          if (main.object?.sha !== '6051fd7a4c7202920948261641a2d37ee5d9a741') throw new Error('Main changed; stop recovery');
+          const response = await fetch(`${root}/actions/runs/38901133829/cancel`, {method:'POST', headers});
+          if (![202,409].includes(response.status)) throw new Error(`Cannot clear stalled run: HTTP ${response.status}`);
+          const workflow = await (await fetch(`${root}/actions/workflows/collect.yml`, {headers})).json();
+          console.log(JSON.stringify({stalledRunCancellation:response.status, workflowState:workflow.state, schedulerTokenConfigured:!!process.env.SCHEDULER_GITHUB_TOKEN}));
+          JS
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Опубликовать реальные предложения проверенным collector
+        timeout-minutes: 8
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+        run: node --import tsx scripts/collect.ts
+      - name: Проверить открытый health и закрытый API на обоих адресах
+        run: |
+          node --input-type=module <<'JS'
+          for (const host of ['https://bus-mogilev-minsk.pages.dev','https://mm-routes-mirror.vojtenkoa695.workers.dev']) {
+            const health = await fetch(`${host}/api/health`, {cache:'no-store',signal:AbortSignal.timeout(25000)});
+            const body = await health.json();
+            const denied = await fetch(`${host}/api/trips?direction=mogilev-minsk&date=2026-10-16`, {cache:'no-store',signal:AbortSignal.timeout(25000)});
+            console.log(JSON.stringify({host, healthStatus:health.status, health:body, unauthenticatedStatus:denied.status}));
+            if (health.status !== 200 || body.healthy !== true || denied.status !== 401) throw new Error('Production API verification failed');
+          }
+          JS
