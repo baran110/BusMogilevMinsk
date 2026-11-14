@@ -28,3 +28,27 @@ it.each(['stale', 'foreign', 'sha', 'event', 'clock'])('rejects invalid schedule
   await expect(runGithubSchedule({ ...env, GITHUB_REPOSITORY: reason === 'foreign' ? 'other/repo' : env.GITHUB_REPOSITORY }, now)).rejects.toThrow()
   expect(writes).toHaveLength(0)
 })
+
+it('requests activation only for an explicit fresh push and still dispatches normally', async () => {
+  const requests: Array<{ url: string; method?: string }> = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+    requests.push({ url, method: init.method })
+    if (init.method === 'PUT' || init.method === 'POST') return new Response(null, { status: 204 })
+    if (url.endsWith('/runs/1234')) return Response.json({ created_at: new Date(now).toISOString(), head_sha: env.GITHUB_SHA, head_branch: 'main', event: 'push' })
+    return Response.json(url.includes('/runs?') ? { workflow_runs: [] } : { state: 'active' })
+  }))
+  await runGithubSchedule(env, now, true)
+  expect(requests.filter(x => x.method === 'PUT')).toEqual([{ url: 'https://api.github.com/repos/baran110/BusMogilevMinsk/actions/workflows/schedule.yml/enable', method: 'PUT' }])
+  expect(requests.filter(x => x.method === 'POST')).toHaveLength(2)
+})
+
+it.each(['schedule', 'failure'])('does not dispatch after a forbidden or failed activation: %s', async (reason) => {
+  const posts: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+    if (init.method === 'POST') posts.push(url)
+    if (init.method === 'PUT') return new Response(null, { status: 403 })
+    return Response.json({ created_at: new Date(now).toISOString(), head_sha: env.GITHUB_SHA, head_branch: 'main', event: reason === 'schedule' ? 'schedule' : 'push' })
+  }))
+  await expect(runGithubSchedule(env, now, true)).rejects.toThrow(/activation|Activation/)
+  expect(posts).toHaveLength(0)
+})
