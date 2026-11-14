@@ -8,7 +8,7 @@ export async function bootstrapWorkflows(token: string, expectedSha: string): Pr
         'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'MM-Routes-Approved-Release' },
       body: body === undefined ? undefined : JSON.stringify(body) })
     if (!response.ok) throw new Error(`GitHub workflow API HTTP ${response.status}`)
-    return response.status === 204 ? undefined : response.json()
+    return response.status === 204 || response.status === 202 ? undefined : response.json()
   }
   const pause = () => new Promise((resolve) => setTimeout(resolve, 10_000))
   async function assertHead() {
@@ -45,6 +45,25 @@ export async function bootstrapWorkflows(token: string, expectedSha: string): Pr
     }
     throw new Error(`${workflow} exceeded the release observation window; inspect Actions before retrying`)
   }
+  // Cancel only the exact abandoned October run inspected before this release.
+  await assertHead()
+  const abandonedId = 38901133829
+  const abandoned = await github(`actions/runs/${abandonedId}`)
+  if (abandoned.status === 'queued') {
+    if (abandoned.head_sha !== '6051fd7a4c7202920948261641a2d37ee5d9a741'
+      || abandoned.path !== '.github/workflows/collect.yml'
+      || abandoned.created_at !== '2026-10-16T12:31:38Z') throw new Error('Queued run differs from the inspected abandoned collection')
+    await github(`actions/runs/${abandonedId}/cancel`, {})
+    let stopped = false
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const state = await github(`actions/runs/${abandonedId}`)
+      if (state.status === 'completed') { stopped = true; break }
+      if (attempt < 5) await pause()
+    }
+    if (!stopped) throw new Error('Abandoned collection is still queued; refuse duplicate dispatch')
+    console.log(JSON.stringify({ cancelledAbandonedRun: abandonedId }))
+  } else if (abandoned.status !== 'completed') throw new Error('The inspected collection is now active; inspect before dispatch')
+
   const startedAt = Date.now()
   const slot = String(Math.floor(startedAt / 600000)), hour = String(Math.floor(startedAt / 3600000))
   // Separate workflows preserve the normal concurrency and provider request limits.
