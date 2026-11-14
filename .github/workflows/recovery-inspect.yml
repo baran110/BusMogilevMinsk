@@ -1,4 +1,4 @@
-# Recheck scheduler availability after missing cron events on 2026-11-14 evening.
+# Preserve the complete recovered BZD stages and published snapshots, 2026-11-14 22:32 Minsk.
 name: Резерв перед восстановлением — только чтение
 
 on:
