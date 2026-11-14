@@ -197,7 +197,7 @@ function SourcesPanel({ sources, close }: { sources: SourceHealth[]; close: () =
     <div className="overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="sources-panel" role="dialog" aria-modal="true" aria-label="Источники данных">
         <div className="sources-header"><div><span className="eyebrow">Прозрачная выдача</span><h2>Источники данных</h2></div><button className="icon-button" onClick={close} aria-label="Закрыть"><Icon name="close" /></button></div>
-        <p className="sources-intro">Мы показываем, откуда получен каждый рейс. Прямые сайты перевозчиков имеют приоритет перед площадками бронирования.</p>
+        <p className="sources-intro">Мы показываем, откуда получен каждый рейс. Прямые сайты перевозчиков имеют приоритет перед площадками бронирования. Полный охват регулярных автобусов пока не подтверждён.</p>
         <div className="source-list">
           {sources.map((source) => (
             <a href={source.url} target="_blank" rel="noopener noreferrer" className="source-item" key={source.id}>
@@ -369,6 +369,7 @@ function TripsApp({ onLogout, onExpired, logoutError }: { onLogout: () => void; 
                 <label>Сначала <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="time">ранние</option><option value="price">дешёвые</option><option value="duration">быстрые</option></select></label>
               </div>
             </div>
+            <p className="observation-note">Охват ограничен подключёнными источниками. Полный охват регулярных автобусов пока не подтверждён.</p>
             <div className="results-layout">
               <FilterPanel filters={filters} setFilters={setFilters} trips={trips} />
               <div className="trip-list">

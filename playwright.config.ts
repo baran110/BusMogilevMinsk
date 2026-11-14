@@ -10,7 +10,8 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'E2E_FIXTURES=1 pnpm dev --host 127.0.0.1',
+    command: 'pnpm dev --host 127.0.0.1',
+    env: { E2E_FIXTURES: '1' },
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
   },

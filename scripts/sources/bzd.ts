@@ -1,5 +1,6 @@
 import type { AvailabilityStatus, Direction, Trip } from '../../src/types'
-import { fetchWithTimeout } from '../lib/fetch'
+import { fetchWithTimeout, HttpError, pause, SourceBlockedError } from '../lib/fetch'
+import { sourceSignal } from '../lib/runtime'
 import type { SourceResult } from '../lib/source'
 import { collectPairs, requestedPairs } from '../lib/coverage'
 import { arrivalFromClock, knownNumber, validatedDeparture } from '../lib/normalize'
@@ -129,11 +130,23 @@ export function parseBzdHtml(html: string, direction: Direction, serviceDate: st
 }
 
 export async function collectBzd(horizonDays = 30, pairs = requestedPairs(horizonDays), concurrency = 2): Promise<SourceResult> {
+  // Space all HTTP attempts, including retries. Near requests may still overlap
+  // while a slow response is in progress; the far producer keeps concurrency=1.
+  let nextStart = Date.now() + 2_000
+  let blocked = false
+  const beforeAttempt = async () => {
+    const start = Math.max(Date.now(), nextStart)
+    nextStart = start + 2_000
+    await pause(Math.max(0, start - Date.now()), sourceSignal())
+    if (blocked) throw new SourceBlockedError('БЖД: запросы остановлены после ограничения доступа')
+  }
   return collectPairs({ id: 'bzd', name: 'БЖД', kind: 'carrier', url: sourceUrl }, pairs, async (direction, date) => {
     const started = Date.now()
     // A measured successful official response took 17.8 s including TLS/body.
     // The shared 12 s default would discard it. The source deadline still bounds the whole cycle.
-    const response = await fetchWithTimeout(bzdRouteUrl(direction, date), {}, 25_000)
+    let response: Response
+    try { response = await fetchWithTimeout(bzdRouteUrl(direction, date), {}, 25_000, 3, beforeAttempt) }
+    catch (error) { if (error instanceof HttpError) blocked = true; throw error }
     const html = await response.text()
     if (process.env.DEBUG_SOURCE_SCHEMA === '1') console.log(JSON.stringify({ bzdRequest: {
       direction, date, status: response.status, elapsedMs: Date.now() - started, bytes: Buffer.byteLength(html, 'utf8'),
@@ -142,6 +155,11 @@ export async function collectBzd(horizonDays = 30, pairs = requestedPairs(horizo
     // Generic empty-message strings can also be hidden templates in a page that
     // contains trains. Without recognised rows the result remains unconfirmed.
     if (!trips.length) {
+      const title = decodeText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '')
+      if (/^verification$/i.test(title) || /challenge-platform|__cf_chl|captcha/iu.test(html)) {
+        blocked = true
+        throw new SourceBlockedError('БЖД: страница проверки доступа вместо расписания; запросы остановлены')
+      }
       if (process.env.DEBUG_SOURCE_SCHEMA === '1') console.log(JSON.stringify({ bzdSchema: {
         title: decodeText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 120),
         challenge: /challenge-platform|__cf_chl|captcha|проверка.*робот/iu.test(html),

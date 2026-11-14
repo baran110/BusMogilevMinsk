@@ -4,6 +4,41 @@ import { collectionDeadline, withSourceDeadline } from '../../scripts/lib/runtim
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
+describe('BZD access restrictions', () => {
+  it.each([1, 2].flatMap((concurrency) => ['<html><head><title>Verification</title></head><body>Check access</body></html>',
+    '<html><body><div class="captcha">Check access</div></body></html>'].map((html) => ({ concurrency, html }))))('halts after an HTTP 200 verification page without confirming empty dates ($concurrency slots)', async ({ concurrency, html }) => {
+    vi.useFakeTimers()
+    const fetch = vi.fn(async () => new Response(html, { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+
+    const pending = collectBzd(3, undefined, concurrency)
+    await vi.advanceTimersByTimeAsync(10_000)
+    const result = await pending
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(result.halted).toBe(true)
+    expect(result.trips).toEqual([])
+    expect(result.health.status).toBe('error')
+    expect(result.health.coverage).toHaveLength(6)
+    expect(result.health.coverage?.every((item) => item.status === 'error')).toBe(true)
+  })
+
+  it('spaces actual attempts and suppresses queued requests after a block', async () => {
+    vi.useFakeTimers()
+    const starts: number[] = []
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      starts.push(Date.now())
+      return new Response(starts.length < 3 ? 'temporary' : 'blocked', { status: starts.length < 3 ? 500 : 403 })
+    }))
+    const pending = collectBzd(3, undefined, 2)
+    await vi.advanceTimersByTimeAsync(20_000)
+    const result = await pending
+    expect(starts).toHaveLength(3)
+    expect(starts.slice(1).every((start, i) => start - starts[i] >= 2_000)).toBe(true)
+    expect(result.halted).toBe(true)
+  })
+})
+
 const row = `
 <div class="sch-table__row-wrap js-row from_morning">
   <div class="sch-table__row" data-ticket_selling_allowed="true" data-train-id="1_741Б" data-train-number="741Б" data-train-type="interregional_business">

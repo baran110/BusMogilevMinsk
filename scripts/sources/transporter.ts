@@ -129,13 +129,13 @@ export async function collectTransporter(config: TransporterConfig, horizonDays 
     if (!Array.isArray(routes) || !routes.length || routePayload.result && routePayload.result !== 'success') throw new Error('Transporter: формат маршрутов изменился')
     const today = localDate()
     const cityIds = config.cityIds || { mogilev: 2, minsk: 1 }
-    const requestedDates = Array.from({ length: Math.ceil(horizonDays / 3) }, (_, index) => addDays(today, index * 3 + 1))
+    const requestedDates = Array.from({ length: horizonDays }, (_, index) => addDays(today, index))
     const all = new Map<string, Trip>()
     const coverage: SourceCoverage[] = []
     let failed = false
     for (const date of requestedDates) {
       for (const [direction, from, to] of [['mogilev-minsk', cityIds.mogilev, cityIds.minsk], ['minsk-mogilev', cityIds.minsk, cityIds.mogilev]] as const) {
-        const windowDates = [-1, 0, 1].map((offset) => addDays(date, offset)).filter((day) => day >= today && day < addDays(today, horizonDays))
+        const windowDates = [date]
         try {
         if (failed) throw new Error('Остальные запросы остановлены после сбоя источника')
         throwIfSourceExpired()
@@ -148,14 +148,27 @@ export async function collectTransporter(config: TransporterConfig, horizonDays 
         if (!payload.data?.trips || typeof payload.data.trips !== 'object' || payload.result && payload.result !== 'success') throw new Error('Transporter: формат рейсов изменился')
         const rawTrips = Array.isArray(payload.data.trips) ? payload.data.trips : Object.values(payload.data.trips)
         const seenAt = new Date().toISOString()
+        const confirmedTrips: Trip[] = []
         for (const raw of rawTrips) {
           const route = routes.find((candidate) => candidate.route_id === raw.route_id)
+          // Like the provider widget's route_id filter, exclude other routes.
+          // Without explicit segment cities, a passing route's origin time and
+          // whole-route price cannot be presented as a Mogilev/Minsk segment.
+          if (route && raw.from_city_id === undefined && raw.to_city_id === undefined
+            && (route.departure_city_id !== from || route.arrival_city_id !== to)) continue
           if ((raw.from_city_id ?? route?.departure_city_id) !== from || (raw.to_city_id ?? route?.arrival_city_id) !== to) throw new Error('Transporter вернул другое направление')
           const trip = normalizeRawTrip(raw, routes, direction, config, seenAt)
-          if (trip.serviceDate < addDays(date, -1) || trip.serviceDate > addDays(date, 2)) throw new Error('Transporter вернул несогласованную дату')
-          // Some providers include an extra neighbouring day. Only the requested core window is replaced.
-          if (windowDates.includes(trip.serviceDate)) all.set(trip.id, trip)
+          // The provider UI filters the response to its selected date. Live
+          // responses include up to two neighbouring days; those are not coverage.
+          if (trip.serviceDate < addDays(date, -2) || trip.serviceDate > addDays(date, 2)) throw new Error('Transporter вернул несогласованную дату')
+          if (windowDates.includes(trip.serviceDate)) confirmedTrips.push(trip)
         }
+        // Neighbouring rows alone cannot distinguish a wrong-date response from
+        // a genuinely empty selected day. Only an empty response confirms emptiness.
+        if (rawTrips.length && !confirmedTrips.length) throw new Error('Transporter не подтвердил выбранную дату')
+        // A later malformed row invalidates this response, including earlier rows.
+        // Keep only responses whose entire date/direction validation succeeded.
+        for (const trip of confirmedTrips) all.set(trip.id, trip)
         coverage.push(...windowDates.map((day): SourceCoverage => ({ direction, date: day, checkedAt: seenAt, status: 'ok' })))
         } catch (error) {
           failed = true

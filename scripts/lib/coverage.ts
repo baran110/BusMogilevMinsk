@@ -2,7 +2,7 @@ import { addDays, localDate } from '../../src/lib/date'
 import type { Direction, SourceCoverage, SourceHealth, Trip } from '../../src/types'
 import { sourceSignal, mapConcurrent } from './runtime'
 import type { SourceResult } from './source'
-import { HttpError } from './fetch'
+import { HttpError, SourceBlockedError } from './fetch'
 
 export function requestedPairs(days: number): Array<{ direction: Direction; date: string }> {
   const today = localDate()
@@ -38,7 +38,7 @@ export async function collectPairs(base: Pick<SourceHealth, 'id' | 'name' | 'url
     } catch (error) {
       // HTTP blocks/exhausted server retries stop the source. One unrecognised date
       // must not discard other dates or the opposite direction; three failures open its circuit.
-      if (error instanceof HttpError || sourceSignal()?.aborted) stop = true
+      if (error instanceof HttpError || error instanceof SourceBlockedError || sourceSignal()?.aborted) stop = true
       failures.set(direction, (failures.get(direction) ?? 0) + 1)
       coverage.push({ direction, date, checkedAt: new Date().toISOString(), status: 'error',
         message: error instanceof Error ? error.message.slice(0, 180) : 'Не удалось проверить дату' })
