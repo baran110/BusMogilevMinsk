@@ -38,8 +38,25 @@ it('requests activation only for an explicit fresh push and still dispatches nor
     return Response.json(url.includes('/runs?') ? { workflow_runs: [] } : { state: 'active' })
   }))
   await runGithubSchedule(env, now, true)
-  expect(requests.filter(x => x.method === 'PUT')).toEqual([{ url: 'https://api.github.com/repos/baran110/BusMogilevMinsk/actions/workflows/schedule.yml/enable', method: 'PUT' }])
+  expect(requests.filter(x => x.method === 'PUT').map(x => x.url.split('/').at(-1))).toEqual(['enable', 'disable', 'enable'])
   expect(requests.filter(x => x.method === 'POST')).toHaveLength(2)
+})
+
+it('restores the timer after a transient failure of the final enable call', async () => {
+  let enables = 0
+  const writes: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+    if (init.method === 'PUT') {
+      const action = url.split('/').at(-1)!; writes.push(action)
+      if (action === 'enable' && ++enables === 2) return new Response(null, { status: 503 })
+      return new Response(null, { status: 204 })
+    }
+    if (init.method === 'POST') return new Response(null, { status: 204 })
+    if (url.endsWith('/runs/1234')) return Response.json({ created_at: new Date(now).toISOString(), head_sha: env.GITHUB_SHA, head_branch: 'main', event: 'push' })
+    return Response.json(url.includes('/runs?') ? { workflow_runs: [] } : { state: 'active' })
+  }))
+  await runGithubSchedule(env, now, true)
+  expect(writes).toEqual(['enable', 'disable', 'enable', 'enable'])
 })
 
 it.each(['schedule', 'failure'])('does not dispatch after a forbidden or failed activation: %s', async (reason) => {
