@@ -3,7 +3,7 @@ import { bootstrapWorkflows } from '../../scripts/lib/bootstrap'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 describe('approved release bootstrap', () => {
-  it.each([false, true])('handles abandoned queue=%s, waits for both collectors, then publishes the combined near snapshot', async (queued) => {
+  it.each([false, true, 'phantom'])('handles abandoned queue=%s, waits for both collectors, then publishes the combined near snapshot', async (queued) => {
     const sha = 'a'.repeat(40)
     const runs: Array<{ id: number; workflow: string; head_sha: string; display_title: string }> = []
     const methods: string[] = []
@@ -12,8 +12,9 @@ describe('approved release bootstrap', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       const path = new URL(url).pathname
       if (path.endsWith('/runs/38901133829/cancel')) {
-        cancelled = true; methods.push('cancel'); return new Response(null, { status: 202 })
+        cancelled = true; methods.push('cancel'); return new Response(null, { status: queued === 'phantom' ? 409 : 202 })
       }
+      if (path.endsWith('/runs/38901133829/jobs')) return Response.json({ total_count: 0, jobs: [] })
       if (path.endsWith('/runs/38901133829')) return Response.json(queued && !cancelled
         ? { status: 'queued', head_sha: '6051fd7a4c7202920948261641a2d37ee5d9a741', path: '.github/workflows/collect.yml', created_at: '2026-10-16T12:31:38Z' }
         : { status: 'completed' })
@@ -56,5 +57,18 @@ describe('approved release bootstrap', () => {
     }))
     await expect(bootstrapWorkflows('test-only-token', 'a'.repeat(40))).rejects.toThrow(/active|differs/)
     expect(writes).toHaveLength(0)
+  })
+
+  it('does not ignore HTTP 409 if the queued record contains jobs', async () => {
+    const writes: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method !== 'GET') { writes.push(url); return new Response(null, { status: 409 }) }
+      if (url.endsWith('/git/ref/heads/main')) return Response.json({ object: { sha: 'a'.repeat(40) } })
+      if (url.includes('/jobs?')) return Response.json({ total_count: 1, jobs: [{ status: 'queued' }] })
+      return Response.json({ status: 'queued', head_sha: '6051fd7a4c7202920948261641a2d37ee5d9a741', path: '.github/workflows/collect.yml', created_at: '2026-10-16T12:31:38Z' })
+    }))
+    await expect(bootstrapWorkflows('test-only-token', 'a'.repeat(40))).rejects.toThrow('HTTP 409')
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatch(/\/cancel$/)
   })
 })
