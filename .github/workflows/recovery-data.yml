@@ -1,0 +1,47 @@
+name: Согласованное восстановление данных
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/recovery-data.yml]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'После согласования восстановления KV введите publish'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: >-
+      github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.confirm == 'publish') || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: approved schedule recovery')))
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test:run
+      - name: Восстановить данные штатными сборщиками без повторного деплоя
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/bootstrap-workflows.ts

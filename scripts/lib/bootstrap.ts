@@ -1,3 +1,7 @@
+class GithubHttpError extends Error {
+  constructor(readonly status: number) { super(`GitHub workflow API HTTP ${status}`) }
+}
+
 export async function bootstrapWorkflows(token: string, expectedSha: string): Promise<void> {
   // Runs only after the approved release; no Cloudflare secrets are needed here.
   const repository = 'baran110/BusMogilevMinsk'
@@ -7,7 +11,7 @@ export async function bootstrapWorkflows(token: string, expectedSha: string): Pr
       signal: AbortSignal.timeout(15_000), headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'MM-Routes-Approved-Release' },
       body: body === undefined ? undefined : JSON.stringify(body) })
-    if (!response.ok) throw new Error(`GitHub workflow API HTTP ${response.status}`)
+    if (!response.ok) throw new GithubHttpError(response.status)
     return response.status === 204 || response.status === 202 ? undefined : response.json()
   }
   const pause = () => new Promise((resolve) => setTimeout(resolve, 10_000))
@@ -53,15 +57,24 @@ export async function bootstrapWorkflows(token: string, expectedSha: string): Pr
     if (abandoned.head_sha !== '6051fd7a4c7202920948261641a2d37ee5d9a741'
       || abandoned.path !== '.github/workflows/collect.yml'
       || abandoned.created_at !== '2026-10-16T12:31:38Z') throw new Error('Queued run differs from the inspected abandoned collection')
-    await github(`actions/runs/${abandonedId}/cancel`, {})
     let stopped = false
-    for (let attempt = 0; attempt < 6; attempt++) {
+    try { await github(`actions/runs/${abandonedId}/cancel`, {}) }
+    catch (error) {
+      if (!(error instanceof GithubHttpError) || error.status !== 409) throw error
+      // GitHub can retain a non-cancellable queued record with no jobs. Only
+      // this exact inspected October record may be ignored, never a live job.
+      const jobs = await github(`actions/runs/${abandonedId}/jobs?per_page=1`)
+      if (jobs.total_count !== 0 || !Array.isArray(jobs.jobs) || jobs.jobs.length !== 0) throw error
+      stopped = true
+      console.log(JSON.stringify({ ignoredAbandonedRecordWithoutJobs: abandonedId }))
+    }
+    for (let attempt = 0; !stopped && attempt < 6; attempt++) {
       const state = await github(`actions/runs/${abandonedId}`)
       if (state.status === 'completed') { stopped = true; break }
       if (attempt < 5) await pause()
     }
     if (!stopped) throw new Error('Abandoned collection is still queued; refuse duplicate dispatch')
-    console.log(JSON.stringify({ cancelledAbandonedRun: abandonedId }))
+    console.log(JSON.stringify({ abandonedRunNoLongerBlocksRelease: abandonedId }))
   } else if (abandoned.status !== 'completed') throw new Error('The inspected collection is now active; inspect before dispatch')
 
   const startedAt = Date.now()
