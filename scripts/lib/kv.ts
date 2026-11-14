@@ -3,6 +3,7 @@ import { DIRECTIONS, isManifest, isSnapshot } from '../../src/lib/validation'
 import { isDeparted } from '../../src/lib/date'
 import { observationAge } from '../../src/lib/trips'
 import { fetchWithTimeout, HttpError } from './fetch'
+import { isDeepStrictEqual } from 'node:util'
 
 const apiBase = (account: string, namespace: string) => `https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces/${namespace}`
 export interface PreviousSnapshots { manifest?: SnapshotManifest; snapshots: Partial<Record<Direction, DirectionSnapshot>> }
@@ -61,7 +62,7 @@ export function validatePublication(manifest: SnapshotManifest, snapshots: Direc
 async function put(path: string, body: unknown): Promise<void> {
   const auth = credentials()
   const response = await fetchWithTimeout(`${apiBase(auth.account, auth.namespace)}/${path}`, { method: 'PUT', redirect: 'error',
-    headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 12_000, 1)
   const result = await response.json() as { success?: boolean }
   if (result.success !== true) throw new Error('Cloudflare не подтвердил запись KV')
 }
@@ -72,16 +73,26 @@ export async function writeKvEntry(key: string, value: unknown, ttlSeconds: numb
   await put('bulk', [{ key, value: serialized, expiration_ttl: ttlSeconds }])
 }
 
-export async function publishSnapshots(manifest: SnapshotManifest, snapshots: DirectionSnapshot[], previous: PreviousSnapshots, now = new Date()): Promise<void> {
+export async function publishSnapshots(manifest: SnapshotManifest, snapshots: DirectionSnapshot[], previous: PreviousSnapshots, now = new Date(),
+  waitForPropagation = () => new Promise<void>((resolve) => setTimeout(resolve, 15_000))): Promise<void> {
   validatePublication(manifest, snapshots, previous, now)
   const entries = snapshots.map((snapshot) => ({ key: manifest.directions[snapshot.direction], value: JSON.stringify(snapshot), expiration_ttl: 6 * 3600 }))
   // Two durable last-known copies are refreshed hourly. Their trip observation timestamps never change.
   if (manifest.mode === 'full') entries.push(...snapshots.map((snapshot) => ({ key: `backup:${snapshot.direction}`, value: JSON.stringify(snapshot), expiration_ttl: 7 * 86400 })))
   await put('bulk', entries)
-  for (const direction of DIRECTIONS) {
-    const stored = await readKv<DirectionSnapshot>(manifest.directions[direction])
-    if (!isSnapshot(stored, direction) || stored.generatedAt !== manifest.generatedAt) throw new Error('Кандидат не подтверждён после записи KV; manifest не переключён')
+  const expected = snapshots.map((snapshot) => JSON.parse(JSON.stringify(snapshot)) as DirectionSnapshot)
+  let verified = false
+  // Read both directions in one bounded propagation window. No write is retried,
+  // and original observation times are part of the full content comparison.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const stored = await Promise.all(expected.map((snapshot) => readKv<unknown>(manifest.directions[snapshot.direction])))
+    if (expected.every((snapshot, index) => isSnapshot(stored[index], snapshot.direction) && isDeepStrictEqual(stored[index], snapshot))) {
+      verified = true
+      break
+    }
+    if (attempt < 5) await waitForPropagation()
   }
+  if (!verified) throw new Error('Кандидат не подтверждён после ожидания распространения KV; manifest не переключён')
   const active = await readKv<SnapshotManifest>('manifest:active')
   if (active?.version !== previous.manifest?.version) throw new Error('Другой сборщик изменил manifest; переключение остановлено')
   await put(`values/${encodeURIComponent('manifest:active')}`, manifest)

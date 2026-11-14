@@ -51,7 +51,7 @@ export function parseCard(text: string, direction: Direction, date: string, inde
   const secondTime = lines.indexOf(times[1], firstTime + 1)
   const departureDateLabel = dateFromCalendarLabel(lines[firstTime + 1] || '', date)
   const arrivalDateLabel = dateFromCalendarLabel(lines[secondTime + 1] || '', date)
-  const durationMatch = text.match(/В пути:\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
+  const durationMatch = text.match(/В пути:?\s*(\d+)\s*ч(?:\s*(\d+)\s*мин)?/i)
   const statedDuration = durationMatch ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] || 0) : null
   const today = localDate(new Date(seenAt))
   const confirmedToday = !departureDateLabel && !arrivalDateLabel && date === today && calendar?.selected
@@ -129,7 +129,9 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
       await detailButtons.first().waitFor({ state: 'visible', timeout: 20_000 })
       if (await rejectCookies.count() === 1 && await rejectCookies.isVisible()) await rejectCookies.click()
       const dateButtons = page.locator('[data-testid="price-calendar-item-button"]')
-      const dateCount = Math.min(await dateButtons.count(), horizonDays)
+      // The calendar can begin with yesterday. Bound by actual dates below,
+      // not by tab index, or the final requested day will be skipped.
+      const dateCount = await dateButtons.count()
       let datesWithTrips = 0
       if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction}: ${dateCount} calendar dates, ${page.url()}`)
       for (let day = 0; day < dateCount; day += 1) {
@@ -163,10 +165,10 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
           let element: HTMLElement | null = button as HTMLElement
           for (let level = 0; level < 16 && element; level += 1, element = element.parentElement) {
             const text = element.innerText || ''
-            if (text.includes('В пути:') && /\d{2}:\d{2}/.test(text)) return text.slice(0, 1400)
+            if (/В пути:?\s*\d+\s*ч/i.test(text) && /\d{2}:\d{2}/.test(text)) return text.slice(0, 1400)
           }
           return ''
-        }).filter(Boolean))
+        }))
         if (process.env.DEBUG_ATLAS === '1') console.log(`[atlas] ${direction} ${serviceDate}: ${cardTexts.length} card texts`)
         const observedAt = new Date().toISOString()
         const calendar = await button.evaluate((element) => ({ label: (element as HTMLElement).innerText, selected: element.getAttribute('aria-selected') === 'true' }))
@@ -190,7 +192,8 @@ export async function collectAtlas(horizonDays = 30): Promise<SourceResult> {
         parsed.forEach((trip) => {
           if (trip) trips.push(trip)
         })
-        coverage.push({ direction, date: serviceDate, checkedAt: new Date().toISOString(), status: parsed.length === cardTexts.length ? 'ok' : 'error' })
+        coverage.push({ direction, date: serviceDate, checkedAt: new Date().toISOString(), status: parsed.length === cardTexts.length ? 'ok' : 'error',
+          message: parsed.length === cardTexts.length ? undefined : `Atlas: распознано ${parsed.length} из ${cardTexts.length} карточек; остальные не подтверждены` })
         } catch (error) {
           throwIfSourceExpired()
           coverage.push({ direction, date: serviceDate, status: 'error', checkedAt: new Date().toISOString(), message: error instanceof Error ? error.message.slice(0, 180) : 'Дата не подтверждена' })

@@ -4,7 +4,10 @@ export class HttpError extends Error {
   constructor(public readonly status: number) { super(`Источник ответил HTTP ${status}`) }
 }
 
-function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
+/** An access challenge can be returned with HTTP 200; never retry other dates. */
+export class SourceBlockedError extends Error {}
+
+export function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(signal.reason); return }
     const abort = () => { clearTimeout(timer); reject(signal?.reason) }
@@ -13,11 +16,15 @@ function pause(milliseconds: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-export async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 12_000): Promise<Response> {
+export async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 12_000, maxAttempts = 3,
+  beforeAttempt?: () => Promise<void>): Promise<Response> {
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) throw new Error('Недопустимое число попыток запроса')
   const parent = [init.signal, sourceSignal()].filter((signal): signal is AbortSignal => !!signal)
   const parentSignal = parent.length ? AbortSignal.any(parent) : undefined
   let lastError: unknown
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    parentSignal?.throwIfAborted()
+    await beforeAttempt?.()
     parentSignal?.throwIfAborted()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(new Error('Превышено время ответа источника')), timeoutMs)
@@ -62,7 +69,7 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}, time
       return new Response(body, { status: response.status, statusText: response.statusText, headers: resultHeaders })
     } catch (error) {
       lastError = error
-      if (parentSignal?.aborted || !retry || attempt === 2) throw error
+      if (parentSignal?.aborted || !retry || attempt === maxAttempts - 1) throw error
     } finally { clearTimeout(timer) }
     await pause(retryDelay, parentSignal)
   }

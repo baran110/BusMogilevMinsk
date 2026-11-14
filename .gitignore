@@ -10,5 +10,6 @@ test-results/
 .dev.vars.*
 .env.*
 .private-access/
+.private-recovery/
 data/snapshots/*.json
 !data/snapshots/sample.json

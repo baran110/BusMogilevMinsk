@@ -38,6 +38,54 @@ describe('safe KV publication', () => {
     expect(writes).toHaveLength(1)
     expect(writes[0]).toContain('/bulk')
   })
+
+  it('waits for complete candidate contents without repeating the write or changing observation times', async () => {
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'a'.repeat(32)); vi.stubEnv('KV_NAMESPACE_ID', 'b'.repeat(32)); vi.stubEnv('CLOUDFLARE_API_TOKEN', 'test-token')
+    const { manifest, snapshots } = candidate()
+    const writes: string[] = []
+    const reads = new Map<string, number>()
+    const pause = vi.fn(async () => {})
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method === 'PUT') { writes.push(url); return Response.json({ success: true }) }
+      const key = decodeURIComponent(url.split('/values/')[1])
+      if (key === 'manifest:active') return new Response('{}', { status: 404 })
+      const snapshot = snapshots.find((item) => manifest.directions[item.direction] === key)!
+      const attempt = (reads.get(key) ?? 0) + 1; reads.set(key, attempt)
+      if (attempt === 1) return new Response('{}', { status: 404 })
+      return Response.json(Object.fromEntries(Object.entries(snapshot).reverse()))
+    }))
+    await publishSnapshots(manifest, snapshots, { snapshots: {} }, now, pause)
+    expect(writes).toHaveLength(2) // bulk, then manifest; never retry bulk.
+    expect(pause).toHaveBeenCalledTimes(1)
+    expect([...reads.values()]).toEqual([2, 2])
+    expect(snapshots[0].trips[0].lastSeenAt).toBe(now.toISOString())
+  })
+
+  it('does not switch to a different valid snapshot sharing the candidate timestamp', async () => {
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'a'.repeat(32)); vi.stubEnv('KV_NAMESPACE_ID', 'b'.repeat(32)); vi.stubEnv('CLOUDFLARE_API_TOKEN', 'test-token')
+    const { manifest, snapshots } = candidate()
+    const wrong = { ...snapshots[0], trips: [] }
+    const writes: string[] = []
+    const pause = vi.fn(async () => {})
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method === 'PUT') { writes.push(url); return Response.json({ success: true }) }
+      const key = decodeURIComponent(url.split('/values/')[1])
+      if (key === 'manifest:active') return new Response('{}', { status: 404 })
+      return Response.json(key === manifest.directions['mogilev-minsk'] ? wrong : snapshots[1])
+    }))
+    await expect(publishSnapshots(manifest, snapshots, { snapshots: {} }, now, pause)).rejects.toThrow('не подтверждён')
+    expect(writes).toHaveLength(1)
+    expect(pause).toHaveBeenCalledTimes(5)
+  })
+
+  it('does not repeat a KV mutation after an ambiguous server failure', async () => {
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'a'.repeat(32)); vi.stubEnv('KV_NAMESPACE_ID', 'b'.repeat(32)); vi.stubEnv('CLOUDFLARE_API_TOKEN', 'test-token')
+    const { manifest, snapshots } = candidate()
+    const fetcher = vi.fn(async () => new Response('failed', { status: 500 }))
+    vi.stubGlobal('fetch', fetcher)
+    await expect(publishSnapshots(manifest, snapshots, { snapshots: {} }, now)).rejects.toBeInstanceOf(HttpError)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
 })
 describe('bounded external requests', () => {
   it('does not retry a block or an unspecified rate limit', async () => {
