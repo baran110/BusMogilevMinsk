@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { bzdStageKey, saveBzdStage } from './lib/bzd-stage'
+import { bzdStageKey, saveBzdStage, readBzdCooldown } from './lib/bzd-stage'
 import { collectBzdBatches } from './lib/bzd-collection'
 import { readKv } from './lib/kv'
 
@@ -14,7 +14,9 @@ if (args.some((arg) => !['--local', '--publish', '--near', '--far', batchArg].in
 }
 const local = args.includes('--local')
 const scope = args.includes('--near') ? 'near' : 'far'
-const successful = await collectBzdBatches(scope, {
+const retryAt = local ? undefined : await readBzdCooldown()
+if (retryAt) console.log(JSON.stringify({ source: 'bzd', collection: 'cooldown', retryAt, localOnly: false }))
+const successful = retryAt ? true : await collectBzdBatches(scope, {
   part: batchArg ? Number(batchArg.split('=')[1]) : undefined,
   read: async (batch) => local ? undefined : readKv(bzdStageKey(batch)),
   write: async (stage) => {
