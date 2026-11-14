@@ -3,13 +3,20 @@ import { bootstrapWorkflows } from '../../scripts/lib/bootstrap'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 describe('approved release bootstrap', () => {
-  it('enables inactive collectors, waits for both, then publishes the combined near snapshot', async () => {
+  it.each([false, true])('handles abandoned queue=%s, waits for both collectors, then publishes the combined near snapshot', async (queued) => {
     const sha = 'a'.repeat(40)
     const runs: Array<{ id: number; workflow: string; head_sha: string; display_title: string }> = []
     const methods: string[] = []
+    let cancelled = false
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       const path = new URL(url).pathname
+      if (path.endsWith('/runs/38901133829/cancel')) {
+        cancelled = true; methods.push('cancel'); return new Response(null, { status: 202 })
+      }
+      if (path.endsWith('/runs/38901133829')) return Response.json(queued && !cancelled
+        ? { status: 'queued', head_sha: '6051fd7a4c7202920948261641a2d37ee5d9a741', path: '.github/workflows/collect.yml', created_at: '2026-10-16T12:31:38Z' }
+        : { status: 'completed' })
       if (init.method === 'PUT') { methods.push('enable'); return new Response(null, { status: 204 }) }
       if (path.endsWith('/git/ref/heads/main')) return Response.json({ object: { sha } })
       const workflow = path.match(/workflows\/([^/]+)/)?.[1]
@@ -27,7 +34,7 @@ describe('approved release bootstrap', () => {
     }))
     await bootstrapWorkflows('test-only-token', sha)
     expect(runs).toHaveLength(3)
-    expect(methods.filter((method) => method !== 'enable')).toEqual(['full', 'far', 'near'])
+    expect(methods.filter((method) => method !== 'enable')).toEqual([...(queued ? ['cancel'] : []), 'full', 'far', 'near'])
   })
 
   it('refuses publication if main moved after the reviewed release', async () => {
@@ -37,6 +44,17 @@ describe('approved release bootstrap', () => {
       return Response.json({ object: { sha: 'b'.repeat(40) } })
     }))
     await expect(bootstrapWorkflows('test-only-token', 'a'.repeat(40))).rejects.toThrow('Main changed')
+    expect(writes).toHaveLength(0)
+  })
+
+  it.each(['in_progress', 'queued'])('does not cancel an active or unrecognised collection (%s)', async (status) => {
+    const writes: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method !== 'GET') writes.push(url)
+      return Response.json(url.endsWith('/git/ref/heads/main')
+        ? { object: { sha: 'a'.repeat(40) } } : { status, head_sha: 'b'.repeat(40) })
+    }))
+    await expect(bootstrapWorkflows('test-only-token', 'a'.repeat(40))).rejects.toThrow(/active|differs/)
     expect(writes).toHaveLength(0)
   })
 })
