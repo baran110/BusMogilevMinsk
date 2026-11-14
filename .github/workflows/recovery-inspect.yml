@@ -1,4 +1,4 @@
-# Read back the publication and partial BZD stages without retrying sources.
+# Recheck scheduler availability after missing cron events on 2026-11-14 evening.
 name: Резерв перед восстановлением — только чтение
 
 on:

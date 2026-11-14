@@ -131,6 +131,20 @@ export async function readBzdStagedResult(pairs: DatePair[], now = new Date()): 
   return combineBzdStages(reads.map((read) => read.status === 'fulfilled' ? read.value : undefined), pairs, now)
 }
 
+/** A challenge stops both producers for an hour; reading never refreshes it. */
+export function bzdRetryAt(values: unknown[], now = new Date()): string | undefined {
+  const deadlines = values.filter((value): value is BzdStage => isBzdStage(value, now))
+    .filter((stage) => [stage.result.health.message, ...(stage.result.health.coverage ?? []).map((item) => item.message)]
+      .some((message) => /страница проверки доступа|HTTP\s+(?:403|429)\b/iu.test(message ?? '')))
+    .map((stage) => Date.parse(stage.generatedAt) + 60 * 60_000).filter((time) => time > now.getTime())
+  return deadlines.length ? new Date(Math.max(...deadlines)).toISOString() : undefined
+}
+
+export async function readBzdCooldown(now = new Date()): Promise<string | undefined> {
+  const batches = [...bzdBatches('near'), ...bzdBatches('far')]
+  return bzdRetryAt(await Promise.all(batches.map((batch) => readKv<unknown>(bzdStageKey(batch)))), now)
+}
+
 export async function saveBzdStage(stage: BzdStage, waitForPropagation = () => new Promise<void>((resolve) => setTimeout(resolve, 15_000))): Promise<void> {
   if (!isBzdStage(stage)) throw new Error('Пакет БЖД не прошёл проверку')
   const key = bzdStageKey(stage)
