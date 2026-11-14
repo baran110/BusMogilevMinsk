@@ -1,3 +1,4 @@
+# Read back the publication and partial BZD stages without retrying sources.
 name: Резерв перед восстановлением — только чтение
 
 on:
