@@ -1,0 +1,45 @@
+name: Автообновление расписания
+
+on:
+  schedule:
+    - cron: '3-59/10 * * * *'
+  push:
+    branches: [main]
+    paths: [.github/workflows/schedule.yml]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Для обновления рабочего KV введите publish'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: timetable-scheduler
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      github.ref == 'refs/heads/main' && ((github.event_name == 'schedule') || (github.event_name == 'workflow_dispatch' && inputs.confirm == 'publish') || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: approved automatic updates')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Запустить независимые сборщики с защитой очереди и дублей
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/schedule.ts

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { bzdBatches, bzdBatchPairs, bzdStageKey, BZD_SOURCE, combineBzdStages, createBzdStage, isBzdStage, saveBzdStage, type BzdBatch } from '../../scripts/lib/bzd-stage'
+import { bzdBatches, bzdBatchPairs, bzdStageKey, BZD_SOURCE, combineBzdStages, createBzdStage, isBzdStage, saveBzdStage, bzdRetryAt, type BzdBatch } from '../../scripts/lib/bzd-stage'
 import { collectBzdBatches } from '../../scripts/lib/bzd-collection'
 import { buildSnapshots } from '../../scripts/lib/snapshots'
 import { projectTrip } from '../../src/lib/trips'
@@ -23,6 +23,22 @@ function result(descriptor = batch, time = now, empty = false, failed = false): 
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 describe('independent BZD packages retain actual observations', () => {
+  it('shares a bounded access-challenge cooldown without refreshing observations or extending it on reads', () => {
+    const failed = result(batch, now, false, true)
+    failed.health.message = 'БЖД: страница проверки доступа вместо расписания; запросы остановлены'
+    const stage = createBzdStage(batch, failed, undefined, now)
+    const before = JSON.stringify(stage)
+    expect(bzdRetryAt([stage], now)).toBe('2026-10-14T10:10:00.000Z')
+    const coveredChallenge = structuredClone(stage)
+    coveredChallenge.result.health.message = 'Предыдущая дата не распознана'
+    coveredChallenge.result.health.coverage![0].message = 'БЖД: страница проверки доступа вместо расписания'
+    expect(bzdRetryAt([coveredChallenge], now)).toBe('2026-10-14T10:10:00.000Z')
+    expect(bzdRetryAt([stage], new Date('2026-10-14T10:09:59Z'))).toBe('2026-10-14T10:10:00.000Z')
+    expect(bzdRetryAt([stage], new Date('2026-10-14T10:10:00Z'))).toBeUndefined()
+    expect(bzdRetryAt([{ ...stage, schemaVersion: 99 }], now)).toBeUndefined()
+    expect(bzdRetryAt([createBzdStage(batch, result(batch, now), undefined, now)], now)).toBeUndefined()
+    expect(JSON.stringify(stage)).toBe(before)
+  })
   it('covers 30 dates exactly once, with two directions and at most five far dates', () => {
     const batches = [batch, ...bzdBatches('far', batch.anchorDate)]
     expect(new Set(batches.map(bzdStageKey)).size).toBe(7)

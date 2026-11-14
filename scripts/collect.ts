@@ -11,7 +11,7 @@ import { collectAtlas } from './sources/atlas'
 import { collectBusPro } from './sources/buspro'
 import { collectBzd } from './sources/bzd'
 import { collectTransporter } from './sources/transporter'
-import { bzdStageKey, readBzdStagedResult, saveBzdStage } from './lib/bzd-stage'
+import { bzdStageKey, readBzdStagedResult, saveBzdStage, readBzdCooldown } from './lib/bzd-stage'
 import { collectBzdBatches } from './lib/bzd-collection'
 import { readKv } from './lib/kv'
 import { addDays, localDate } from '../src/lib/date'
@@ -33,7 +33,9 @@ const results = (await Promise.all(entries.map((source): Promise<SourceResult> =
     return (async () => {
       let failed = false
       try {
-        await collectBzdBatches('near', { read: (batch) => readKv(bzdStageKey(batch)), write: saveBzdStage })
+        const retryAt = await readBzdCooldown()
+        if (retryAt) console.log(JSON.stringify({ source: 'bzd', collection: 'cooldown', retryAt }))
+        else await collectBzdBatches('near', { read: (batch) => readKv(bzdStageKey(batch)), write: saveBzdStage })
       } catch (error) {
         failed = true
         console.warn(JSON.stringify({ source: 'bzd', stagingUpdate: 'failed',

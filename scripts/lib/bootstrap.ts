@@ -80,11 +80,13 @@ export async function bootstrapWorkflows(token: string, expectedSha: string): Pr
   const startedAt = Date.now()
   const slot = String(Math.floor(startedAt / 600000)), hour = String(Math.floor(startedAt / 3600000))
   // Separate workflows preserve the normal concurrency and provider request limits.
-  await Promise.all([
+  const initial = await Promise.allSettled([
     dispatchAndWait('collect.yml', { mode: 'full', slot }, `collect/full/${slot}`, 15),
     dispatchAndWait('collect-bzd-far.yml', { slot: hour, dispatch_slot: slot }, `bzd/far/${hour}`, 58),
   ])
   const finalSlot = String(Math.floor(Date.now() / 600000))
   await dispatchAndWait('collect.yml', { mode: 'near', slot: finalSlot }, `collect/near/${finalSlot}`, 15)
+  const errors = initial.flatMap((result) => result.status === 'rejected' ? [result.reason] : [])
+  if (errors.length) throw new AggregateError(errors, 'Partial recovery published; one or more initial collectors failed')
   console.log(JSON.stringify({ bootstrapCompleted: true, automaticTimerEnabled: false }))
 }

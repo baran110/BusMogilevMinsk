@@ -3,7 +3,7 @@ import { bootstrapWorkflows } from '../../scripts/lib/bootstrap'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 describe('approved release bootstrap', () => {
-  it.each([false, true, 'phantom'])('handles abandoned queue=%s, waits for both collectors, then publishes the combined near snapshot', async (queued) => {
+  it.each([false, true, 'phantom', 'far_failure'])('handles abandoned queue=%s, waits for both collectors, then publishes the combined near snapshot', async (queued) => {
     const sha = 'a'.repeat(40)
     const runs: Array<{ id: number; workflow: string; head_sha: string; display_title: string }> = []
     const methods: string[] = []
@@ -15,7 +15,7 @@ describe('approved release bootstrap', () => {
         cancelled = true; methods.push('cancel'); return new Response(null, { status: queued === 'phantom' ? 409 : 202 })
       }
       if (path.endsWith('/runs/38901133829/jobs')) return Response.json({ total_count: 0, jobs: [] })
-      if (path.endsWith('/runs/38901133829')) return Response.json(queued && !cancelled
+      if (path.endsWith('/runs/38901133829')) return Response.json(queued && queued !== 'far_failure' && !cancelled
         ? { status: 'queued', head_sha: '6051fd7a4c7202920948261641a2d37ee5d9a741', path: '.github/workflows/collect.yml', created_at: '2026-10-16T12:31:38Z' }
         : { status: 'completed' })
       if (init.method === 'PUT') { methods.push('enable'); return new Response(null, { status: 204 }) }
@@ -30,12 +30,16 @@ describe('approved release bootstrap', () => {
         return new Response(null, { status: 204 })
       }
       if (path.endsWith('/runs')) return Response.json({ workflow_runs: runs.filter((run) => run.workflow === workflow) })
-      if (/actions\/runs\/\d+$/.test(path)) return Response.json({ status: 'completed', conclusion: 'success' })
+      if (/actions\/runs\/\d+$/.test(path)) {
+        const run = runs.find((item) => String(item.id) === path.split('/').at(-1))
+        return Response.json({ status: 'completed', conclusion: queued === 'far_failure' && run?.workflow === 'collect-bzd-far.yml' ? 'failure' : 'success' })
+      }
       return Response.json({ state: 'disabled_inactivity' })
     }))
-    await bootstrapWorkflows('test-only-token', sha)
+    if (queued === 'far_failure') await expect(bootstrapWorkflows('test-only-token', sha)).rejects.toThrow('Partial recovery published')
+    else await bootstrapWorkflows('test-only-token', sha)
     expect(runs).toHaveLength(3)
-    expect(methods.filter((method) => method !== 'enable')).toEqual([...(queued ? ['cancel'] : []), 'full', 'far', 'near'])
+    expect(methods.filter((method) => method !== 'enable')).toEqual([...(queued && queued !== 'far_failure' ? ['cancel'] : []), 'full', 'far', 'near'])
   })
 
   it('refuses publication if main moved after the reviewed release', async () => {
