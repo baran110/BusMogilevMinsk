@@ -15,12 +15,22 @@ export async function runGithubSchedule(env: Record<string, string | undefined>,
     || !Number.isFinite(age) || age < -60_000 || age > 600_000) throw new Error('Scheduler execution is stale or inconsistent; no workflows dispatched')
   if (reactivate) {
     if (run.event === 'schedule') throw new Error('Scheduled events must not modify workflow activation')
-    const enabled = await fetch('https://api.github.com/repos/baran110/BusMogilevMinsk/actions/workflows/schedule.yml/enable', {
-      method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json', 'User-Agent': 'MM-Routes-Schedule' },
-    })
-    if (enabled.status !== 204) throw new Error(`Scheduler activation HTTP ${enabled.status}`)
-    console.log(JSON.stringify({ schedulerActivationRequested: true, scheduledExecutionConfirmed: false }))
+    const activation = async (action: 'disable' | 'enable') => {
+      const result = await fetch(`https://api.github.com/repos/baran110/BusMogilevMinsk/actions/workflows/schedule.yml/${action}`, {
+        method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json', 'User-Agent': 'MM-Routes-Schedule' },
+      })
+      if (result.status !== 204) throw new Error(`Scheduler activation HTTP ${result.status}`)
+    }
+    // Verify enable permission first. A real off/on transition is necessary
+    // when an already-active workflow does not emit any schedule events.
+    await activation('enable')
+    try { await activation('disable') }
+    finally {
+      try { await activation('enable') }
+      catch { await activation('enable') } // Bounded idempotent restoration after a transient failure.
+    }
+    console.log(JSON.stringify({ schedulerActivationRequested: true, schedulerReset: true, scheduledExecutionConfirmed: false }))
   }
   // Use current slots, never slots calculated before dependency installation.
   return dispatchUpdates({ GITHUB_TOKEN: token }, now)

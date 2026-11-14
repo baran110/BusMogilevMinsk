@@ -1,4 +1,5 @@
 name: Автообновление расписания
+# Explicit approved starts re-register the timer with a bounded off/on transition.
 
 on:
   schedule:
